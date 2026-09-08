@@ -1,0 +1,988 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Talk Board</title>
+<meta name="description" content="A simple, kid-friendly AAC talk board.">
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#F2F6EF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#161C16" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Talk Board">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Baloo+2:wght@500;600;700;800&display=swap">
+<style>
+  /* ---------- tokens ---------- */
+  :root{
+    color-scheme:light;
+    --bg:#F2F6EF;
+    --surface:#FFFFFF;
+    --surface-alt:#E7EFE2;
+    --ink:#213022;
+    --ink-dim:#5C6B5A;
+    --border:#D7E1D1;
+    --accent:#2C7A6B;
+    --accent-ink:#FFFFFF;
+    --danger:#C24C3D;
+    --shadow: 0 1px 2px rgba(33,48,34,.06), 0 6px 16px rgba(33,48,34,.08);
+
+    --pronoun-bg:#FDE7A6;  --pronoun-fg:#4A3A0A;
+    --verb-bg:#BCE3C2;     --verb-fg:#173821;
+    --descriptor-bg:#BBD8F1; --descriptor-fg:#132E4A;
+    --social-bg:#F4BADD;   --social-fg:#4A1236;
+    --question-bg:#CBB8EC; --question-fg:#2E1B4A;
+    --negation-bg:#F0A79C; --negation-fg:#4A1610;
+
+    --cat-orange-bg:#F6C79C; --cat-orange-fg:#4A2A08;
+    --cat-violet-bg:#CBB8EC; --cat-violet-fg:#2E1B4A;
+    --cat-pink-bg:#F4B9C9;   --cat-pink-fg:#4A1420;
+    --cat-teal-bg:#A6DAD3;   --cat-teal-fg:#0F3A34;
+    --cat-tan-bg:#E2C69E;    --cat-tan-fg:#3E2A0C;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      color-scheme:dark;
+      --bg:#161C16;
+      --surface:#1E261E;
+      --surface-alt:#242E23;
+      --ink:#EAF0E6;
+      --ink-dim:#A9B8A5;
+      --border:#33402F;
+      --accent:#5FC1AC;
+      --accent-ink:#0E1F1B;
+      --danger:#F0A79C;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 20px rgba(0,0,0,.35);
+
+      --pronoun-bg:#5C4A15;  --pronoun-fg:#FDE7A6;
+      --verb-bg:#245234;     --verb-fg:#BCE3C2;
+      --descriptor-bg:#1E3F5C; --descriptor-fg:#BBD8F1;
+      --social-bg:#5C2647;   --social-fg:#F4BADD;
+      --question-bg:#3B2A5C; --question-fg:#CBB8EC;
+      --negation-bg:#5C2A22; --negation-fg:#F0A79C;
+
+      --cat-orange-bg:#5C3A16; --cat-orange-fg:#F6C79C;
+      --cat-violet-bg:#3B2A5C; --cat-violet-fg:#CBB8EC;
+      --cat-pink-bg:#5C2438;   --cat-pink-fg:#F4B9C9;
+      --cat-teal-bg:#1C4A43;   --cat-teal-fg:#A6DAD3;
+      --cat-tan-bg:#4A3A1C;    --cat-tan-fg:#E2C69E;
+    }
+  }
+  :root[data-theme="dark"]{
+    color-scheme:dark;
+    --bg:#161C16; --surface:#1E261E; --surface-alt:#242E23; --ink:#EAF0E6; --ink-dim:#A9B8A5;
+    --border:#33402F; --accent:#5FC1AC; --accent-ink:#0E1F1B; --danger:#F0A79C;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 20px rgba(0,0,0,.35);
+    --pronoun-bg:#5C4A15; --pronoun-fg:#FDE7A6; --verb-bg:#245234; --verb-fg:#BCE3C2;
+    --descriptor-bg:#1E3F5C; --descriptor-fg:#BBD8F1; --social-bg:#5C2647; --social-fg:#F4BADD;
+    --question-bg:#3B2A5C; --question-fg:#CBB8EC; --negation-bg:#5C2A22; --negation-fg:#F0A79C;
+    --cat-orange-bg:#5C3A16; --cat-orange-fg:#F6C79C; --cat-violet-bg:#3B2A5C; --cat-violet-fg:#CBB8EC;
+    --cat-pink-bg:#5C2438; --cat-pink-fg:#F4B9C9; --cat-teal-bg:#1C4A43; --cat-teal-fg:#A6DAD3;
+    --cat-tan-bg:#4A3A1C; --cat-tan-fg:#E2C69E;
+  }
+
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:'Atkinson Hyperlegible', ui-sans-serif, system-ui, sans-serif;
+    overscroll-behavior:none; -webkit-user-select:none; user-select:none;
+    display:flex; flex-direction:column; height:100vh; height:100dvh;
+    padding-top:env(safe-area-inset-top);
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  h1,h2,h3{font-family:'Baloo 2', ui-rounded, system-ui, sans-serif; margin:0;}
+  button{font-family:inherit;}
+  .word-label{font-family:'Baloo 2', ui-rounded, system-ui, sans-serif;}
+  [hidden]{display:none !important;}
+
+  /* ---------- top bar: sentence strip ---------- */
+  #sentenceBar{
+    display:flex; align-items:center; gap:10px;
+    padding:10px 12px; background:var(--surface); border-bottom:1px solid var(--border);
+    flex-shrink:0;
+  }
+  #strip{
+    flex:1; display:flex; align-items:center; gap:8px; overflow-x:auto;
+    min-height:56px; padding:4px 2px; scroll-behavior:smooth;
+  }
+  #strip:empty::after{
+    content:"Tap a word to start talking";
+    color:var(--ink-dim); font-size:15px; padding-left:6px;
+  }
+  .chip{
+    display:flex; align-items:center; gap:6px; background:var(--surface-alt);
+    border:1px solid var(--border); border-radius:999px; padding:6px 12px;
+    font-size:18px; white-space:nowrap; flex-shrink:0;
+  }
+  .chip .em{font-size:20px;}
+  .iconbtn{
+    display:flex; align-items:center; justify-content:center;
+    width:52px; height:52px; border-radius:16px; border:none; cursor:pointer;
+    flex-shrink:0; transition:transform .08s ease;
+  }
+  .iconbtn:active{transform:scale(.92);}
+  #speakBtn{background:var(--accent); color:var(--accent-ink); font-size:24px;}
+  #clearBtn{background:var(--surface-alt); color:var(--ink); font-size:20px; border:1px solid var(--border);}
+
+  /* ---------- category tabs ---------- */
+  #tabs{
+    display:flex; gap:8px; padding:10px 12px; overflow-x:auto;
+    background:var(--bg); flex-shrink:0; border-bottom:1px solid var(--border);
+  }
+  .tab{
+    display:flex; align-items:center; gap:7px; padding:9px 16px;
+    border-radius:14px; border:2px solid var(--border); background:var(--surface);
+    color:var(--ink); font-size:16px; font-weight:600; white-space:nowrap; cursor:pointer;
+    flex-shrink:0;
+  }
+  .tab.active{border-color:var(--accent); background:var(--accent); color:var(--accent-ink);}
+  .tab .em{font-size:19px;}
+  .tab.addTab{border-style:dashed; color:var(--ink-dim); font-weight:700;}
+
+  /* ---------- grid ---------- */
+  #gridWrap{flex:1; overflow-y:auto; padding:14px;}
+  #grid{
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(108px,1fr));
+    gap:12px; align-content:start;
+  }
+  .tile{
+    position:relative; aspect-ratio:1/1; border-radius:20px; border:none; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
+    padding:8px 6px; box-shadow:var(--shadow); transition:transform .08s ease;
+  }
+  .tile:active{transform:scale(.94);}
+  .tile .em{font-size:38px; line-height:1;}
+  .tile .word-label{font-size:15px; font-weight:700; text-align:center; line-height:1.15;}
+
+  .tile-pronoun{background:var(--pronoun-bg); color:var(--pronoun-fg);}
+  .tile-verb{background:var(--verb-bg); color:var(--verb-fg);}
+  .tile-descriptor{background:var(--descriptor-bg); color:var(--descriptor-fg);}
+  .tile-social{background:var(--social-bg); color:var(--social-fg);}
+  .tile-question{background:var(--question-bg); color:var(--question-fg);}
+  .tile-negation{background:var(--negation-bg); color:var(--negation-fg);}
+  .tile-cat-orange{background:var(--cat-orange-bg); color:var(--cat-orange-fg);}
+  .tile-cat-violet{background:var(--cat-violet-bg); color:var(--cat-violet-fg);}
+  .tile-cat-pink{background:var(--cat-pink-bg); color:var(--cat-pink-fg);}
+  .tile-cat-teal{background:var(--cat-teal-bg); color:var(--cat-teal-fg);}
+  .tile-cat-tan{background:var(--cat-tan-bg); color:var(--cat-tan-fg);}
+
+  .addTile{
+    background:transparent; border:2px dashed var(--border); color:var(--ink-dim);
+    font-size:15px; font-weight:700;
+  }
+
+  /* edit affordances on tiles */
+  .tileEditRow{position:absolute; top:6px; right:6px; display:flex; gap:4px;}
+  .miniBtn{
+    width:28px; height:28px; border-radius:9px; border:none; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; font-size:14px;
+    background:rgba(255,255,255,.85); color:#222; box-shadow:0 1px 3px rgba(0,0,0,.25);
+  }
+  .miniBtn.del{background:var(--danger); color:#fff;}
+  .moveCol{position:absolute; left:4px; top:4px; bottom:4px; display:flex; flex-direction:column; justify-content:space-between;}
+  .confirmRow{position:absolute; inset:0; background:rgba(0,0,0,.55); border-radius:20px; display:flex; align-items:center; justify-content:center; gap:8px;}
+  .confirmRow button{border:none; border-radius:10px; padding:6px 10px; font-weight:700; font-size:13px; cursor:pointer;}
+  .confirmRow .yes{background:var(--danger); color:#fff;}
+  .confirmRow .no{background:#fff; color:#222;}
+
+  /* ---------- footer / lock ---------- */
+  #footer{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:8px 14px; background:var(--surface); border-top:1px solid var(--border); flex-shrink:0;
+  }
+  #syncStatus{font-size:12px; color:var(--ink-dim); display:flex; align-items:center; gap:6px; min-width:0;}
+  #syncStatus span:last-child{white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  #syncDot{width:8px; height:8px; border-radius:50%; background:var(--accent); flex-shrink:0;}
+  #syncDot.off{background:var(--ink-dim);}
+  #footRight{display:flex; align-items:center; gap:8px;}
+  #installBtn{
+    display:none; align-items:center; gap:6px; background:var(--surface-alt); color:var(--ink);
+    border:1px solid var(--border); border-radius:12px; padding:9px 14px; font-weight:700; font-size:14px; cursor:pointer;
+  }
+  #gearBtn{
+    width:44px; height:44px; border-radius:12px; border:1px solid var(--border);
+    background:var(--surface-alt); color:var(--ink-dim); font-size:19px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .editTools{display:none; align-items:center; gap:8px;}
+  body.editing .editTools{display:flex;}
+  .editBtn{
+    display:flex; align-items:center; gap:6px; background:var(--surface-alt); color:var(--ink);
+    border:1px solid var(--border); border-radius:12px; padding:9px 14px; font-weight:700; font-size:14px; cursor:pointer;
+  }
+  #exitEditPill{
+    display:none; align-items:center; gap:8px; background:var(--accent); color:var(--accent-ink);
+    border:none; border-radius:999px; padding:9px 16px; font-weight:700; font-size:14px; cursor:pointer;
+  }
+  body.editing #exitEditPill{display:flex;}
+  body.editing #gearBtn{display:none;}
+  body.editing #installBtn{display:none !important;}
+
+  /* ---------- modal ---------- */
+  #modalRoot{position:fixed; inset:0; z-index:50; display:none; align-items:flex-end; justify-content:center;}
+  #modalRoot.show{display:flex;}
+  #modalBackdrop{position:absolute; inset:0; background:rgba(20,26,18,.5);}
+  .sheet{
+    position:relative; width:100%; max-width:520px; max-height:88vh; overflow-y:auto;
+    background:var(--surface); border-radius:22px 22px 0 0; padding:20px 20px 28px;
+    box-shadow:0 -8px 30px rgba(0,0,0,.3);
+  }
+  @media (min-width:640px){
+    #modalRoot{align-items:center;}
+    .sheet{border-radius:22px; margin-bottom:0;}
+  }
+  .sheet h2{font-size:20px; margin-bottom:14px;}
+  .field{margin-bottom:14px;}
+  .field label{display:block; font-size:13px; font-weight:700; color:var(--ink-dim); margin-bottom:6px; text-transform:uppercase; letter-spacing:.03em;}
+  .field input[type=text], .field select{
+    width:100%; padding:12px 14px; border-radius:12px; border:1.5px solid var(--border);
+    background:var(--bg); color:var(--ink); font-size:17px;
+  }
+  .emojiPicker{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;}
+  .emojiPicker button{
+    width:40px; height:40px; font-size:20px; border-radius:10px; border:1.5px solid var(--border);
+    background:var(--bg); cursor:pointer;
+  }
+  .colorPicker{display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;}
+  .colorSwatch{width:38px; height:38px; border-radius:11px; border:2px solid transparent; cursor:pointer;}
+  .colorSwatch.selected{border-color:var(--ink);}
+  .sheetActions{display:flex; gap:10px; margin-top:18px;}
+  .btn{flex:1; padding:13px; border-radius:13px; border:none; font-size:16px; font-weight:700; cursor:pointer;}
+  .btnPrimary{background:var(--accent); color:var(--accent-ink);}
+  .btnGhost{background:var(--surface-alt); color:var(--ink);}
+  .tip{font-size:13px; color:var(--ink-dim); background:var(--surface-alt); border-radius:12px; padding:10px 12px; margin-bottom:14px; line-height:1.4;}
+  .rowBtn{
+    display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+    background:var(--bg); border:1.5px solid var(--border); border-radius:14px;
+    padding:14px; font-size:16px; font-weight:700; color:var(--ink); cursor:pointer; margin-bottom:10px;
+  }
+  .rowBtn .rb-em{font-size:22px;}
+  .rowBtn small{display:block; font-weight:400; color:var(--ink-dim); font-size:13px; margin-top:2px;}
+
+  /* ---------- unlock overlay ---------- */
+  #unlockRoot{position:fixed; inset:0; z-index:60; display:none; align-items:center; justify-content:center; background:rgba(20,26,18,.55);}
+  #unlockRoot.show{display:flex;}
+  .unlockCard{background:var(--surface); border-radius:22px; padding:26px; width:min(320px,86vw); text-align:center;}
+  .unlockRing{width:84px; height:84px; margin:0 auto 14px; position:relative;}
+  .unlockRing svg{width:84px; height:84px; transform:rotate(-90deg);}
+  .unlockRing circle{fill:none; stroke-width:8;}
+  .unlockRing .track{stroke:var(--border);}
+  .unlockRing .fill{stroke:var(--accent); stroke-dasharray:226; stroke-dashoffset:226; stroke-linecap:round;}
+  .unlockRing .glyph{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:26px;}
+
+  ::-webkit-scrollbar{width:0; height:0;}
+
+  #toast{
+    position:fixed; left:50%; bottom:calc(78px + env(safe-area-inset-bottom)); transform:translateX(-50%);
+    background:var(--ink); color:var(--bg); padding:10px 16px; border-radius:999px; font-size:14px; font-weight:700;
+    box-shadow:0 6px 20px rgba(0,0,0,.35); opacity:0; transition:opacity .2s ease; pointer-events:none; z-index:80; max-width:90vw; text-align:center;
+  }
+  #toast.show{opacity:1;}
+</style>
+</head>
+<body>
+
+<div id="sentenceBar">
+  <div id="strip"></div>
+  <button id="clearBtn" class="iconbtn" aria-label="Clear sentence">✕</button>
+  <button id="speakBtn" class="iconbtn" aria-label="Speak sentence">🔊</button>
+</div>
+
+<div id="tabs"></div>
+
+<div id="gridWrap"><div id="grid"></div></div>
+
+<div id="footer">
+  <div id="syncStatus"><span id="syncDot"></span><span id="syncText">Loading…</span></div>
+  <div id="footRight">
+    <button id="installBtn">⬇️ Install app</button>
+    <div class="editTools">
+      <button id="backupBtn" class="editBtn">⬆️ Back up</button>
+      <button id="restoreBtn" class="editBtn">⬇️ Restore</button>
+    </div>
+    <button id="exitEditPill">✓ Done editing</button>
+    <button id="gearBtn" aria-label="Parent settings">⚙️</button>
+  </div>
+</div>
+
+<input id="restoreFile" type="file" accept="application/json,.json" hidden>
+
+<div id="unlockRoot">
+  <div class="unlockCard">
+    <div class="unlockRing">
+      <svg viewBox="0 0 84 84">
+        <circle class="track" cx="42" cy="42" r="36"></circle>
+        <circle id="unlockFill" class="fill" cx="42" cy="42" r="36"></circle>
+      </svg>
+      <div class="glyph">🔒</div>
+    </div>
+    <h3 style="font-size:17px;margin-bottom:6px;">Parent controls</h3>
+    <p style="font-size:14px;color:var(--ink-dim);margin:0 0 16px;">Press and hold the button for 1 second to edit words.</p>
+    <button id="unlockHold" class="btn btnPrimary" style="width:100%;">Hold to unlock</button>
+    <button id="unlockCancel" class="btn btnGhost" style="width:100%;margin-top:8px;">Cancel</button>
+  </div>
+</div>
+
+<div id="modalRoot">
+  <div id="modalBackdrop"></div>
+  <div class="sheet" id="sheetContent"></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  var STORAGE_KEY = "talkboard.state.v1";
+  var SCHEMA = 1;
+
+  var EM = {
+    common: ["😊","😢","😠","😴","🤕","😍","😲","🥱","👍","👎","❤️","🙏","👋","🙋","✋","➕","🛑","🏃","🥤","🍽️","⚽","👀","✅","🔁","⬆️","⬇️",
+      "🍎","🍌","🥛","💧","🍪","🧀","🥣","🍕","🥨","🍞",
+      "🧸","🧱","📖","🫧","🧩","🛝","📱","🚗","🌳","🎈",
+      "👩","👨","👧","👦","👵","👴","😺","👩‍⚕️","👶","🧑‍🏫",
+      "🏠","🏫","🚿","🛏️","🏪","☀️","🌧️","🚻",
+      "🐶","🐱","🐦","🐟","🐴","🐢","🦋","🐝"]
+  };
+
+  var CAT_COLORS = ["cat-orange","cat-violet","cat-pink","cat-teal","cat-tan"];
+  var CORE_TYPES = [
+    {v:"pronoun",l:"Pronoun (yellow)"},
+    {v:"verb",l:"Action word (green)"},
+    {v:"descriptor",l:"Describing word (blue)"},
+    {v:"social",l:"Social word (pink)"},
+    {v:"question",l:"Question word (purple)"},
+    {v:"negation",l:"Yes/no (red)"}
+  ];
+
+  function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4); }
+
+  function seedState(){
+    return {
+      core: [
+        {id:uid(),label:"yes",emoji:"👍",type:"negation"},
+        {id:uid(),label:"no",emoji:"👎",type:"negation"},
+        {id:uid(),label:"please",emoji:"🙏",type:"social"},
+        {id:uid(),label:"thank you",emoji:"💕",type:"social"},
+        {id:uid(),label:"hi",emoji:"🙋",type:"social"},
+        {id:uid(),label:"bye",emoji:"👋",type:"social"},
+        {id:uid(),label:"I",emoji:"🧍",type:"pronoun"},
+        {id:uid(),label:"you",emoji:"👉",type:"pronoun"},
+        {id:uid(),label:"want",emoji:"✋",type:"verb"},
+        {id:uid(),label:"more",emoji:"➕",type:"verb"},
+        {id:uid(),label:"stop",emoji:"🛑",type:"verb"},
+        {id:uid(),label:"go",emoji:"🏃",type:"verb"},
+        {id:uid(),label:"help",emoji:"🆘",type:"verb"},
+        {id:uid(),label:"like",emoji:"❤️",type:"verb"},
+        {id:uid(),label:"eat",emoji:"🍽️",type:"verb"},
+        {id:uid(),label:"drink",emoji:"🥤",type:"verb"},
+        {id:uid(),label:"play",emoji:"⚽",type:"verb"},
+        {id:uid(),label:"look",emoji:"👀",type:"verb"},
+        {id:uid(),label:"all done",emoji:"✅",type:"verb"},
+        {id:uid(),label:"again",emoji:"🔁",type:"verb"},
+        {id:uid(),label:"up",emoji:"⬆️",type:"verb"},
+        {id:uid(),label:"down",emoji:"⬇️",type:"verb"},
+        {id:uid(),label:"big",emoji:"🐘",type:"descriptor"},
+        {id:uid(),label:"little",emoji:"🐜",type:"descriptor"},
+        {id:uid(),label:"hot",emoji:"🔥",type:"descriptor"},
+        {id:uid(),label:"cold",emoji:"❄️",type:"descriptor"},
+        {id:uid(),label:"happy",emoji:"😊",type:"descriptor"},
+        {id:uid(),label:"sad",emoji:"😢",type:"descriptor"},
+        {id:uid(),label:"mad",emoji:"😠",type:"descriptor"},
+        {id:uid(),label:"hurt",emoji:"🤕",type:"descriptor"},
+        {id:uid(),label:"tired",emoji:"😴",type:"descriptor"},
+        {id:uid(),label:"what",emoji:"❓",type:"question"},
+        {id:uid(),label:"where",emoji:"📍",type:"question"},
+        {id:uid(),label:"who",emoji:"👤",type:"question"}
+      ],
+      categories: [
+        {id:uid(), name:"Food", emoji:"🍎", color:"cat-orange", words:[
+          {id:uid(),label:"apple",emoji:"🍎"},{id:uid(),label:"banana",emoji:"🍌"},
+          {id:uid(),label:"milk",emoji:"🥛"},{id:uid(),label:"water",emoji:"💧"},
+          {id:uid(),label:"cracker",emoji:"🥨"},{id:uid(),label:"cookie",emoji:"🍪"},
+          {id:uid(),label:"cheese",emoji:"🧀"},{id:uid(),label:"yogurt",emoji:"🥣"},
+          {id:uid(),label:"pizza",emoji:"🍕"},{id:uid(),label:"snack",emoji:"🍞"}
+        ]},
+        {id:uid(), name:"Toys & Play", emoji:"🧸", color:"cat-violet", words:[
+          {id:uid(),label:"ball",emoji:"⚽"},{id:uid(),label:"blocks",emoji:"🧱"},
+          {id:uid(),label:"book",emoji:"📖"},{id:uid(),label:"bubbles",emoji:"🫧"},
+          {id:uid(),label:"puzzle",emoji:"🧩"},{id:uid(),label:"swing",emoji:"🛝"},
+          {id:uid(),label:"tablet",emoji:"📱"},{id:uid(),label:"car",emoji:"🚗"},
+          {id:uid(),label:"outside",emoji:"🌳"},{id:uid(),label:"balloon",emoji:"🎈"}
+        ]},
+        {id:uid(), name:"People", emoji:"👪", color:"cat-pink", words:[
+          {id:uid(),label:"mommy",emoji:"👩"},{id:uid(),label:"daddy",emoji:"👨"},
+          {id:uid(),label:"sister",emoji:"👧"},{id:uid(),label:"brother",emoji:"👦"},
+          {id:uid(),label:"grandma",emoji:"👵"},{id:uid(),label:"grandpa",emoji:"👴"},
+          {id:uid(),label:"friend",emoji:"🙂"},{id:uid(),label:"teacher",emoji:"🧑‍🏫"},
+          {id:uid(),label:"doctor",emoji:"👩‍⚕️"},{id:uid(),label:"baby",emoji:"👶"}
+        ]},
+        {id:uid(), name:"Places", emoji:"🏠", color:"cat-teal", words:[
+          {id:uid(),label:"home",emoji:"🏠"},{id:uid(),label:"school",emoji:"🏫"},
+          {id:uid(),label:"car ride",emoji:"🚗"},{id:uid(),label:"park",emoji:"🌳"},
+          {id:uid(),label:"store",emoji:"🏪"},{id:uid(),label:"bathroom",emoji:"🚻"},
+          {id:uid(),label:"bed",emoji:"🛏️"},{id:uid(),label:"bath",emoji:"🛁"}
+        ]},
+        {id:uid(), name:"Animals", emoji:"🐾", color:"cat-tan", words:[
+          {id:uid(),label:"dog",emoji:"🐶"},{id:uid(),label:"cat",emoji:"🐱"},
+          {id:uid(),label:"bird",emoji:"🐦"},{id:uid(),label:"fish",emoji:"🐟"},
+          {id:uid(),label:"horse",emoji:"🐴"},{id:uid(),label:"turtle",emoji:"🐢"}
+        ]}
+      ]
+    };
+  }
+
+  var state = seedState();
+  var storageOK = true;
+  var editMode = false;
+  var activeTab = "core"; // "core" or category id
+  var sentence = []; // array of {label, emoji}
+  var saveTimer = null;
+  var pendingDeleteId = null;
+  var deferredInstallPrompt = null;
+
+  var app = {
+    strip: document.getElementById('strip'),
+    tabs: document.getElementById('tabs'),
+    grid: document.getElementById('grid'),
+    syncDot: document.getElementById('syncDot'),
+    syncText: document.getElementById('syncText'),
+    exitPill: document.getElementById('exitEditPill'),
+    gearBtn: document.getElementById('gearBtn'),
+    installBtn: document.getElementById('installBtn'),
+    unlockRoot: document.getElementById('unlockRoot'),
+    unlockFill: document.getElementById('unlockFill'),
+    modalRoot: document.getElementById('modalRoot'),
+    sheetContent: document.getElementById('sheetContent'),
+    toast: document.getElementById('toast')
+  };
+
+  /* ---------------- persistence (local, offline-first) ---------------- */
+
+  function isValidState(s){
+    return s && typeof s === "object" && Array.isArray(s.core) && Array.isArray(s.categories);
+  }
+
+  function loadState(){
+    try{
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return null;
+      var parsed = JSON.parse(raw);
+      // stored as {schema, data} or bare data for forward safety
+      var data = parsed && parsed.data ? parsed.data : parsed;
+      return isValidState(data) ? data : null;
+    }catch(e){ storageOK = false; return null; }
+  }
+
+  function persist(){
+    if(!storageOK) return;
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({schema:SCHEMA, savedAt:Date.now(), data:state}));
+    }catch(e){ storageOK = false; renderSyncStatus(); }
+  }
+
+  function scheduleSave(){
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(persist, 250);
+  }
+
+  /* ---------------- misc helpers ---------------- */
+
+  function speak(text){
+    try{
+      if(!('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+      var u = new SpeechSynthesisUtterance(text);
+      u.rate = 0.92;
+      u.pitch = 1.05;
+      window.speechSynthesis.speak(u);
+    }catch(e){}
+  }
+
+  function typeClass(t){ return "tile-" + t; }
+  function catClass(c){ return "tile-" + c; }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  var toastTimer = null;
+  function toast(msg){
+    app.toast.textContent = msg;
+    app.toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ app.toast.classList.remove('show'); }, 2200);
+  }
+
+  /* ---------------- render ---------------- */
+
+  function renderSyncStatus(){
+    var installed = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches ||
+                    window.navigator.standalone === true;
+    app.syncDot.className = storageOK ? "" : "off";
+    if(!storageOK){
+      app.syncText.textContent = "Changes won't be saved on this device";
+    } else {
+      app.syncText.textContent = installed ? "Saved on this device" : "Saved on this device";
+    }
+  }
+
+  function renderStrip(){
+    app.strip.innerHTML = "";
+    sentence.forEach(function(w, i){
+      var chip = document.createElement('div');
+      chip.className = 'chip';
+      chip.innerHTML = '<span class="em">'+w.emoji+'</span><span>'+escapeHtml(w.label)+'</span>';
+      chip.addEventListener('click', function(){
+        sentence.splice(i,1);
+        renderStrip();
+      });
+      app.strip.appendChild(chip);
+    });
+    app.strip.scrollLeft = app.strip.scrollWidth;
+  }
+
+  function renderTabs(){
+    app.tabs.innerHTML = "";
+    var coreTab = document.createElement('button');
+    coreTab.className = 'tab' + (activeTab==='core' ? ' active' : '');
+    coreTab.innerHTML = '<span class="em">🏠</span><span>Core</span>';
+    coreTab.addEventListener('click', function(){ activeTab='core'; render(); });
+    app.tabs.appendChild(coreTab);
+
+    state.categories.forEach(function(cat){
+      var t = document.createElement('button');
+      t.className = 'tab' + (activeTab===cat.id ? ' active' : '');
+      t.innerHTML = '<span class="em">'+cat.emoji+'</span><span>'+escapeHtml(cat.name)+'</span>' +
+        (editMode ? '<span style="margin-left:4px;opacity:.8;">✏️</span>' : '');
+      t.addEventListener('click', function(){
+        if(editMode){ openCategoryModal(cat.id); }
+        else { activeTab = cat.id; render(); }
+      });
+      app.tabs.appendChild(t);
+    });
+
+    if(editMode){
+      var addTab = document.createElement('button');
+      addTab.className = 'tab addTab';
+      addTab.textContent = '+ New category';
+      addTab.addEventListener('click', function(){ openCategoryModal(null); });
+      app.tabs.appendChild(addTab);
+    }
+  }
+
+  function currentWordList(){
+    if(activeTab === 'core') return state.core;
+    var cat = state.categories.find(function(c){ return c.id===activeTab; });
+    return cat ? cat.words : [];
+  }
+
+  function currentCategory(){
+    if(activeTab==='core') return null;
+    return state.categories.find(function(c){ return c.id===activeTab; }) || null;
+  }
+
+  function renderGrid(){
+    app.grid.innerHTML = "";
+    var list = currentWordList();
+    var cat = currentCategory();
+
+    list.forEach(function(word, idx){
+      var tile = document.createElement('button');
+      var cls = activeTab==='core' ? typeClass(word.type||'verb') : catClass((cat&&cat.color)||'cat-orange');
+      tile.className = 'tile ' + cls;
+      tile.innerHTML = '<span class="em">'+word.emoji+'</span><span class="word-label">'+escapeHtml(word.label)+'</span>';
+
+      tile.addEventListener('click', function(){
+        if(editMode) return; // edit handled by mini buttons
+        sentence.push({label:word.label, emoji:word.emoji});
+        renderStrip();
+        speak(word.label);
+      });
+
+      if(editMode){
+        var moveCol = document.createElement('div');
+        moveCol.className = 'moveCol';
+        var up = document.createElement('button');
+        up.className = 'miniBtn'; up.textContent='▲';
+        up.addEventListener('click', function(ev){ ev.stopPropagation(); moveWord(idx,-1); });
+        var down = document.createElement('button');
+        down.className = 'miniBtn'; down.textContent='▼';
+        down.addEventListener('click', function(ev){ ev.stopPropagation(); moveWord(idx,1); });
+        moveCol.appendChild(up); moveCol.appendChild(down);
+        tile.appendChild(moveCol);
+
+        var row = document.createElement('div');
+        row.className = 'tileEditRow';
+        var editBtn = document.createElement('button');
+        editBtn.className='miniBtn'; editBtn.textContent='✏️';
+        editBtn.addEventListener('click', function(ev){ ev.stopPropagation(); openWordModal(word.id); });
+        var delBtn = document.createElement('button');
+        delBtn.className='miniBtn del'; delBtn.textContent='🗑';
+        delBtn.addEventListener('click', function(ev){ ev.stopPropagation(); pendingDeleteId = word.id; renderGrid(); });
+        row.appendChild(editBtn); row.appendChild(delBtn);
+        tile.appendChild(row);
+
+        if(pendingDeleteId === word.id){
+          var conf = document.createElement('div');
+          conf.className = 'confirmRow';
+          conf.innerHTML = '<button class="yes">Delete</button><button class="no">Keep</button>';
+          conf.querySelector('.yes').addEventListener('click', function(ev){ ev.stopPropagation(); deleteWord(word.id); });
+          conf.querySelector('.no').addEventListener('click', function(ev){ ev.stopPropagation(); pendingDeleteId=null; renderGrid(); });
+          tile.appendChild(conf);
+        }
+      }
+
+      app.grid.appendChild(tile);
+    });
+
+    if(editMode){
+      var addTile = document.createElement('button');
+      addTile.className = 'tile addTile';
+      addTile.innerHTML = '<span class="em">＋</span><span class="word-label">Add word</span>';
+      addTile.addEventListener('click', function(){ openWordModal(null); });
+      app.grid.appendChild(addTile);
+    }
+  }
+
+  function render(){
+    document.body.classList.toggle('editing', editMode);
+    renderSyncStatus();
+    renderStrip();
+    renderTabs();
+    renderGrid();
+  }
+
+  /* ---------------- mutations ---------------- */
+
+  function moveWord(idx, dir){
+    var list = currentWordList();
+    var j = idx + dir;
+    if(j<0 || j>=list.length) return;
+    var tmp = list[idx]; list[idx]=list[j]; list[j]=tmp;
+    renderGrid();
+    scheduleSave();
+  }
+
+  function deleteWord(id){
+    var list = currentWordList();
+    var i = list.findIndex(function(w){ return w.id===id; });
+    if(i>-1) list.splice(i,1);
+    pendingDeleteId = null;
+    renderGrid();
+    scheduleSave();
+  }
+
+  function upsertWord(data){
+    var list = currentWordList();
+    if(data.id){
+      var w = list.find(function(x){ return x.id===data.id; });
+      if(w){ w.label=data.label; w.emoji=data.emoji; if(activeTab==='core') w.type=data.type; }
+    } else {
+      var nw = {id:uid(), label:data.label, emoji:data.emoji};
+      if(activeTab==='core') nw.type = data.type;
+      list.push(nw);
+    }
+    renderGrid();
+    scheduleSave();
+  }
+
+  function upsertCategory(data){
+    if(data.id){
+      var c = state.categories.find(function(x){ return x.id===data.id; });
+      if(c){ c.name=data.name; c.emoji=data.emoji; c.color=data.color; }
+    } else {
+      state.categories.push({id:uid(), name:data.name, emoji:data.emoji, color:data.color, words:[]});
+    }
+    renderTabs();
+    renderGrid();
+    scheduleSave();
+  }
+
+  function deleteCategory(id){
+    var i = state.categories.findIndex(function(c){ return c.id===id; });
+    if(i>-1) state.categories.splice(i,1);
+    if(activeTab===id) activeTab='core';
+    render();
+    scheduleSave();
+  }
+
+  /* ---------------- modals ---------------- */
+
+  function closeModal(){
+    app.modalRoot.classList.remove('show');
+    app.sheetContent.innerHTML = '';
+  }
+
+  function openModal(html, afterMount){
+    app.sheetContent.innerHTML = html;
+    app.modalRoot.classList.add('show');
+    app.sheetContent.scrollTop = 0;
+    if(afterMount) afterMount();
+  }
+
+  function buildEmojiPicker(container, onPick){
+    var wrap = document.createElement('div');
+    wrap.className = 'emojiPicker';
+    EM.common.forEach(function(em){
+      var b = document.createElement('button');
+      b.type='button'; b.textContent = em;
+      b.addEventListener('click', function(){ onPick(em); });
+      wrap.appendChild(b);
+    });
+    container.appendChild(wrap);
+  }
+
+  function openWordModal(wordId){
+    var isCore = activeTab === 'core';
+    var list = currentWordList();
+    var existing = wordId ? list.find(function(w){ return w.id===wordId; }) : null;
+
+    var typeOptions = "";
+    if(isCore){
+      typeOptions = CORE_TYPES.map(function(t){
+        var sel = existing && existing.type===t.v ? 'selected' : '';
+        return '<option value="'+t.v+'" '+sel+'>'+t.l+'</option>';
+      }).join('');
+    }
+
+    var html =
+      '<h2>'+(existing?'Edit word':'Add a word')+'</h2>' +
+      (isCore ? '<div class="tip">Tip: once your child learns where a core word is, try to keep it in the same spot — that consistency helps them find words faster over time.</div>' : '') +
+      '<div class="field"><label>Word</label><input type="text" id="fLabel" value="'+(existing?escapeHtml(existing.label):'')+'" placeholder="e.g. more"></div>' +
+      '<div class="field"><label>Symbol</label><input type="text" id="fEmoji" value="'+(existing?existing.emoji:'')+'" placeholder="Tap an emoji below, or use your keyboard"><div id="pickerHost"></div></div>' +
+      (isCore ? '<div class="field"><label>Word type</label><select id="fType">'+typeOptions+'</select></div>' : '') +
+      '<div class="sheetActions">' +
+        '<button class="btn btnGhost" id="fCancel">Cancel</button>' +
+        '<button class="btn btnPrimary" id="fSave">Save</button>' +
+      '</div>';
+
+    openModal(html, function(){
+      var pickerHost = document.getElementById('pickerHost');
+      buildEmojiPicker(pickerHost, function(em){ document.getElementById('fEmoji').value = em; });
+      document.getElementById('fCancel').addEventListener('click', closeModal);
+      document.getElementById('fSave').addEventListener('click', function(){
+        var label = document.getElementById('fLabel').value.trim();
+        var emoji = document.getElementById('fEmoji').value.trim() || '⭐';
+        if(!label) return;
+        var data = {id: existing?existing.id:null, label:label, emoji:emoji};
+        if(isCore) data.type = document.getElementById('fType').value;
+        upsertWord(data);
+        closeModal();
+      });
+    });
+  }
+
+  function openCategoryModal(catId){
+    var existing = catId ? state.categories.find(function(c){ return c.id===catId; }) : null;
+    var colorSwatches = CAT_COLORS.map(function(c){
+      return '<button type="button" class="colorSwatch '+((existing&&existing.color===c)||(!existing&&c===CAT_COLORS[0])?'selected':'')+'" data-color="'+c+'" style="background:var(--'+c+'-bg)"></button>';
+    }).join('');
+
+    var html =
+      '<h2>'+(existing?'Edit category':'New category')+'</h2>' +
+      '<div class="field"><label>Name</label><input type="text" id="fName" value="'+(existing?escapeHtml(existing.name):'')+'" placeholder="e.g. Feelings"></div>' +
+      '<div class="field"><label>Icon</label><input type="text" id="fCEmoji" value="'+(existing?existing.emoji:'📁')+'"><div id="cPickerHost"></div></div>' +
+      '<div class="field"><label>Color</label><div class="colorPicker">'+colorSwatches+'</div></div>' +
+      '<div class="sheetActions">' +
+        '<button class="btn btnGhost" id="cCancel">Cancel</button>' +
+        '<button class="btn btnPrimary" id="cSave">Save</button>' +
+      '</div>' +
+      (existing ? '<button class="btn" id="cDelete" style="width:100%;margin-top:10px;background:transparent;color:var(--danger);">Delete this category</button>' : '');
+
+    openModal(html, function(){
+      var chosenColor = existing ? existing.color : CAT_COLORS[0];
+      document.querySelectorAll('.colorSwatch').forEach(function(sw){
+        sw.addEventListener('click', function(){
+          document.querySelectorAll('.colorSwatch').forEach(function(s){ s.classList.remove('selected'); });
+          sw.classList.add('selected');
+          chosenColor = sw.getAttribute('data-color');
+        });
+      });
+      var pickerHost = document.getElementById('cPickerHost');
+      buildEmojiPicker(pickerHost, function(em){ document.getElementById('fCEmoji').value = em; });
+      document.getElementById('cCancel').addEventListener('click', closeModal);
+      document.getElementById('cSave').addEventListener('click', function(){
+        var name = document.getElementById('fName').value.trim();
+        var emoji = document.getElementById('fCEmoji').value.trim() || '📁';
+        if(!name) return;
+        upsertCategory({id: existing?existing.id:null, name:name, emoji:emoji, color:chosenColor});
+        closeModal();
+      });
+      var delBtn = document.getElementById('cDelete');
+      if(delBtn){
+        delBtn.addEventListener('click', function(){
+          deleteCategory(existing.id);
+          closeModal();
+        });
+      }
+    });
+  }
+
+  /* ---------------- backup / restore ---------------- */
+
+  function backupBoard(){
+    try{
+      var payload = {app:"talk-board", schema:SCHEMA, exportedAt:new Date().toISOString(), data:state};
+      var blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      var stamp = new Date().toISOString().slice(0,10);
+      a.href = url;
+      a.download = "talk-board-backup-" + stamp + ".json";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+      toast("Backup saved to your files");
+    }catch(e){
+      toast("Couldn't create a backup");
+    }
+  }
+
+  function restoreBoard(file){
+    var reader = new FileReader();
+    reader.onload = function(){
+      try{
+        var parsed = JSON.parse(reader.result);
+        var data = parsed && parsed.data ? parsed.data : parsed;
+        if(!isValidState(data)) throw new Error("bad");
+        state = data;
+        activeTab = "core";
+        pendingDeleteId = null;
+        persist();
+        render();
+        toast("Board restored");
+      }catch(e){
+        toast("That file isn't a Talk Board backup");
+      }
+    };
+    reader.onerror = function(){ toast("Couldn't read that file"); };
+    reader.readAsText(file);
+  }
+
+  /* ---------------- lock / unlock ---------------- */
+
+  var holdRaf = null, holdStart = null;
+  var HOLD_MS = 1000;
+
+  function startHold(){
+    holdStart = performance.now();
+    cancelAnimationFrame(holdRaf);
+    step();
+    function step(){
+      var elapsed = performance.now() - holdStart;
+      var pct = Math.min(1, elapsed/HOLD_MS);
+      var circumference = 226;
+      app.unlockFill.style.strokeDashoffset = String(circumference * (1-pct));
+      if(pct>=1){
+        editMode = true;
+        app.unlockRoot.classList.remove('show');
+        app.unlockFill.style.strokeDashoffset = '226';
+        render();
+        return;
+      }
+      holdRaf = requestAnimationFrame(step);
+    }
+  }
+  function cancelHold(){
+    cancelAnimationFrame(holdRaf);
+    app.unlockFill.style.strokeDashoffset = '226';
+  }
+
+  app.gearBtn.addEventListener('click', function(){
+    app.unlockRoot.classList.add('show');
+  });
+  document.getElementById('unlockCancel').addEventListener('click', function(){
+    cancelHold();
+    app.unlockRoot.classList.remove('show');
+  });
+  app.unlockRoot.addEventListener('click', function(e){
+    if(e.target === app.unlockRoot){
+      cancelHold();
+      app.unlockRoot.classList.remove('show');
+    }
+  });
+  var holdBtn = document.getElementById('unlockHold');
+  holdBtn.addEventListener('pointerdown', function(e){ e.preventDefault(); startHold(); });
+  ['pointerup','pointerleave','pointercancel'].forEach(function(evt){ holdBtn.addEventListener(evt, cancelHold); });
+
+  app.exitPill.addEventListener('click', function(){
+    editMode = false;
+    pendingDeleteId = null;
+    render();
+  });
+
+  document.getElementById('modalBackdrop').addEventListener('click', closeModal);
+
+  /* ---------------- top-level controls ---------------- */
+
+  document.getElementById('clearBtn').addEventListener('click', function(){
+    sentence = [];
+    renderStrip();
+  });
+  document.getElementById('speakBtn').addEventListener('click', function(){
+    if(sentence.length===0) return;
+    speak(sentence.map(function(w){ return w.label; }).join(' '));
+  });
+
+  document.getElementById('backupBtn').addEventListener('click', backupBoard);
+  var restoreFile = document.getElementById('restoreFile');
+  document.getElementById('restoreBtn').addEventListener('click', function(){ restoreFile.click(); });
+  restoreFile.addEventListener('change', function(){
+    if(restoreFile.files && restoreFile.files[0]) restoreBoard(restoreFile.files[0]);
+    restoreFile.value = "";
+  });
+
+  /* ---------------- install (PWA) ---------------- */
+
+  window.addEventListener('beforeinstallprompt', function(e){
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    if(!editMode) app.installBtn.style.display = 'flex';
+  });
+  app.installBtn.addEventListener('click', function(){
+    if(!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    deferredInstallPrompt.userChoice.finally(function(){
+      deferredInstallPrompt = null;
+      app.installBtn.style.display = 'none';
+    });
+  });
+  window.addEventListener('appinstalled', function(){
+    deferredInstallPrompt = null;
+    app.installBtn.style.display = 'none';
+  });
+
+  /* ---------------- boot ---------------- */
+
+  var loaded = loadState();
+  if(loaded){ state = loaded; }
+  else { persist(); } // seed on first run
+
+  render();
+
+  // service worker for offline use
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('sw.js').catch(function(){});
+    });
+  }
+
+})();
+</script>
+
+</body>
+</html>

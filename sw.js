@@ -2,7 +2,7 @@
    Bump CACHE when you change any precached file so clients update. */
 "use strict";
 
-var CACHE = "talk-board-v2";
+var CACHE = "talk-board-v3";
 
 // Relative to the service worker's scope, so this works under any
 // GitHub Pages subpath (e.g. /talk-board/).

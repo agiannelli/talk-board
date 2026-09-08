@@ -163,6 +163,21 @@
   .tile .em{font-size:38px; line-height:1;}
   .tile .word-label{font-size:15px; font-weight:700; text-align:center; line-height:1.15;}
 
+  /* Bigger tiles on tablets (iPad portrait ~768px and up). */
+  @media (min-width:700px){
+    #gridWrap{padding:20px;}
+    #grid{grid-template-columns:repeat(auto-fill, minmax(150px,1fr)); gap:16px;}
+    .tile .em{font-size:54px;}
+    .tile .word-label{font-size:18px;}
+  }
+  /* Larger still on iPad landscape / iPad Pro. */
+  @media (min-width:1000px){
+    #grid{grid-template-columns:repeat(auto-fill, minmax(186px,1fr)); gap:20px;}
+    .tile{border-radius:24px;}
+    .tile .em{font-size:66px;}
+    .tile .word-label{font-size:21px;}
+  }
+
   .tile-pronoun{background:var(--pronoun-bg); color:var(--pronoun-fg);}
   .tile-verb{background:var(--verb-bg); color:var(--verb-fg);}
   .tile-descriptor{background:var(--descriptor-bg); color:var(--descriptor-fg);}
@@ -199,10 +214,19 @@
     display:flex; align-items:center; justify-content:space-between; gap:10px;
     padding:8px 14px; background:var(--surface); border-top:1px solid var(--border); flex-shrink:0;
   }
+  #footLeft{display:flex; align-items:center; gap:8px; min-width:0;}
   #syncStatus{font-size:12px; color:var(--ink-dim); display:flex; align-items:center; gap:6px; min-width:0;}
   #syncStatus span:last-child{white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   #syncDot{width:8px; height:8px; border-radius:50%; background:var(--accent); flex-shrink:0;}
   #syncDot.off{background:var(--ink-dim);}
+  #boardCodeChip{
+    display:inline-flex; align-items:center; gap:5px; flex-shrink:0; cursor:pointer;
+    background:var(--surface-alt); color:var(--ink); border:1px solid var(--border);
+    border-radius:999px; padding:5px 11px; font-size:12px; font-weight:700; letter-spacing:.02em;
+    font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  #boardCodeChip[hidden]{display:none;}
+  #boardCodeChip .lock{font-size:11px;}
   #footRight{display:flex; align-items:center; gap:8px;}
   #installBtn{
     display:none; align-items:center; gap:6px; background:var(--surface-alt); color:var(--ink);
@@ -302,7 +326,10 @@
 <div id="gridWrap"><div id="grid"></div></div>
 
 <div id="footer">
-  <div id="syncStatus"><span id="syncDot"></span><span id="syncText">Loading…</span></div>
+  <div id="footLeft">
+    <div id="syncStatus"><span id="syncDot"></span><span id="syncText">Loading…</span></div>
+    <button id="boardCodeChip" type="button" title="Tap to copy your board code" hidden></button>
+  </div>
   <div id="footRight">
     <button id="installBtn">⬇️ Install app</button>
     <div class="editTools">
@@ -500,6 +527,7 @@
     grid: document.getElementById('grid'),
     syncDot: document.getElementById('syncDot'),
     syncText: document.getElementById('syncText'),
+    boardCodeChip: document.getElementById('boardCodeChip'),
     exitPill: document.getElementById('exitEditPill'),
     gearBtn: document.getElementById('gearBtn'),
     installBtn: document.getElementById('installBtn'),
@@ -697,6 +725,12 @@
   /* ---------------- render ---------------- */
 
   function renderSyncStatus(){
+    if(app.boardCodeChip){
+      app.boardCodeChip.hidden = !cloud.code;
+      if(cloud.code){
+        app.boardCodeChip.innerHTML = '<span class="lock">🔑</span><span>' + escapeHtml(cloud.code) + '</span>';
+      }
+    }
     if(cloud.code){
       var map = {
         connecting: ["",    "Syncing…"],
@@ -1020,13 +1054,14 @@
     } else if(cloudActive()){
       html =
         '<h2>Cloud sync</h2>' +
-        '<div class="tip">This board is syncing under the code below. Enter the same code on another device to share it. Anyone who knows the code can view and edit — treat it like a password.</div>' +
-        '<div class="field"><label>Board code</label><input type="text" id="clCode" value="' + escapeHtml(cloud.code) + '" readonly></div>' +
+        '<div class="tip">This board is syncing under the code below. Enter the same code on another device to share it. The code is locked while connected — to switch boards, create a new code. Anyone who knows the code can view and edit, so treat it like a password.</div>' +
+        '<div class="field"><label>Board code (locked)</label><input type="text" id="clCode" value="' + escapeHtml(cloud.code) + '" readonly></div>' +
         '<div class="sheetActions">' +
           '<button class="btn btnGhost" id="clCopy">Copy code</button>' +
           '<button class="btn btnPrimary" id="clClose">Done</button>' +
         '</div>' +
-        '<button class="btn" id="clLeave" style="width:100%;margin-top:10px;background:transparent;color:var(--danger);">Disconnect this device</button>';
+        '<button class="btn btnGhost" id="clNew" style="width:100%;margin-top:12px;">Create a new board code</button>' +
+        '<button class="btn" id="clLeave" style="width:100%;margin-top:8px;background:transparent;color:var(--danger);">Turn off sync (this device only)</button>';
     } else {
       html =
         '<h2>Cloud sync</h2>' +
@@ -1055,6 +1090,12 @@
         if(navigator.clipboard && navigator.clipboard.writeText){
           navigator.clipboard.writeText(t).then(function(){ toast("Code copied"); }, function(){ toast("Code: " + t); });
         } else { toast("Code: " + t); }
+      });
+      var makeNew = byId('clNew');
+      if(makeNew) makeNew.addEventListener('click', function(){
+        if(!window.confirm("Create a new board code? This device moves to a brand-new code (your current words come with it). Other devices stay on the old code until you enter the new one on them.")) return;
+        cloudJoin(generateCode());
+        closeModal();
       });
       var leave = byId('clLeave');
       if(leave) leave.addEventListener('click', function(){ cloudLeave(); closeModal(); });
@@ -1170,6 +1211,13 @@
   });
 
   document.getElementById('cloudBtn').addEventListener('click', openCloudModal);
+  app.boardCodeChip.addEventListener('click', function(){
+    var t = cloud.code || "";
+    if(!t) return;
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(t).then(function(){ toast("Board code copied"); }, function(){ toast("Board code: " + t); });
+    } else { toast("Board code: " + t); }
+  });
   document.getElementById('backupBtn').addEventListener('click', backupBoard);
   var restoreFile = document.getElementById('restoreFile');
   document.getElementById('restoreBtn').addEventListener('click', function(){ restoreFile.click(); });

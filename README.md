@@ -17,10 +17,13 @@ it to a phone or tablet home screen and it runs full-screen and works offline.
   accidentally rearrange the board. In edit mode you can add / edit / reorder /
   delete words and categories.
 - **Works offline** once loaded, and **installs** to the home screen.
-- **Local-first storage** — the board is saved on the device. No account, no
-  tracking, nothing leaves the device.
+- **Local-first storage** — the board is saved on the device and works fully
+  offline with no account.
 - **Backup & Restore** — export the whole board to a `.json` file and import it
   on another device to copy your setup across tablets/phones.
+- **Optional cloud sync** — connect two or more devices to the same **board
+  code** and edits sync between them automatically (via Firebase Firestore).
+  Off by default; the app works exactly the same without it.
 
 ## Using it
 
@@ -37,14 +40,66 @@ it to a phone or tablet home screen and it runs full-screen and works offline.
 
 ### Moving your board to another device
 
-There's no shared server, so each device keeps its own copy. To copy a board:
+You have two options:
 
-1. On the set-up device: unlock parent controls → **⬆️ Back up** → save the
-   `.json` file.
-2. Move that file to the other device (AirDrop, email, cloud drive, etc.).
-3. On the other device: unlock parent controls → **⬇️ Restore** → pick the file.
+**A. One-time copy (no setup, works offline)** — unlock parent controls →
+**⬆️ Back up** → save the `.json`, move it to the other device (AirDrop, email,
+cloud drive, etc.), then **⬇️ Restore** it there. Restoring **replaces** the
+board on that device.
 
-> Restoring **replaces** the board on that device.
+**B. Live cloud sync (keeps devices in step)** — set up Firebase once (below),
+then on each device unlock parent controls → **☁️ Cloud sync** → enter the same
+**board code**. Edits on one device appear on the others.
+
+## Cloud sync setup (optional)
+
+Cloud sync is off until you add a free Firebase project. It takes about five
+minutes and costs nothing for this kind of use.
+
+1. **Create a project** at <https://console.firebase.google.com> → *Add project*.
+2. **Add a Web app** (the `</>` icon) and copy the `firebaseConfig` values it
+   shows you.
+3. **Enable Firestore**: Build → *Firestore Database* → *Create database* →
+   Production mode.
+4. **Enable Anonymous sign-in**: Build → *Authentication* → *Sign-in method* →
+   enable **Anonymous**. (Sync uses this so the database isn't open to the whole
+   internet — no login screen appears in the app.)
+5. **Authorize your site**: Authentication → *Settings* → *Authorized domains* →
+   add `agiannelli.github.io` (and `localhost` for local testing).
+6. **Paste your config** into `index.html`, in the `FIREBASE_CONFIG` block near
+   the top of the `<script>`:
+
+   ```js
+   var FIREBASE_CONFIG = {
+     apiKey: "…",
+     authDomain: "your-project.firebaseapp.com",
+     projectId: "your-project",
+     appId: "…"
+   };
+   ```
+
+7. **Set security rules** (Firestore → *Rules*) so only signed-in users can read
+   or write board documents:
+
+   ```
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /boards/{code} {
+         allow read, write: if request.auth != null;
+       }
+     }
+   }
+   ```
+
+Then redeploy (commit + push) and, in the app, unlock parent controls →
+**☁️ Cloud sync** → **Generate a code** (or type one) → **Connect**. Enter the
+same code on any other device to share the board.
+
+> **The board code is like a password.** Anyone who knows it can view and edit
+> the board, so use the generated random codes and don't post them publicly.
+> The `apiKey` in the config is *not* a secret — it only identifies your
+> project; the security rules above are what actually protect the data.
 
 ## Hosting
 
@@ -80,5 +135,11 @@ installed copies pick up the new version on next launch.
 
 ## Privacy
 
-All data stays on the device in `localStorage`. There are no analytics, no
-network calls except loading web fonts, and no account.
+With cloud sync **off** (the default), all data stays on the device in
+`localStorage`. There are no analytics and no account; the only network calls
+are loading web fonts.
+
+With cloud sync **on**, the board contents are stored in *your own* Firebase
+project and synced to the devices that share the board code. Nothing is sent
+anywhere else, and turning sync off (**☁️ Cloud sync → Disconnect**) returns the
+device to local-only.

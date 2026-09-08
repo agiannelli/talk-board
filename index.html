@@ -306,6 +306,7 @@
   <div id="footRight">
     <button id="installBtn">⬇️ Install app</button>
     <div class="editTools">
+      <button id="cloudBtn" class="editBtn">☁️ Cloud sync</button>
       <button id="backupBtn" class="editBtn">⬆️ Back up</button>
       <button id="restoreBtn" class="editBtn">⬇️ Restore</button>
     </div>
@@ -339,12 +340,33 @@
 
 <div id="toast"></div>
 
+<!-- Firebase (compat SDK) for optional cross-device cloud sync. Loaded with
+     `defer` from Google's CDN so it never blocks the board; if it's blocked or
+     the device is offline on first load, the app simply stays local-only. -->
+<script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+
 <script>
 (function(){
   "use strict";
 
   var STORAGE_KEY = "talkboard.state.v1";
   var SCHEMA = 1;
+
+  /* ---------------- cloud sync config (optional) ----------------
+     Paste your Firebase web-app config below to turn on cross-device sync.
+     Leave the values blank and the app stays local-only — it behaves exactly
+     the same, just without the cloud. Full setup steps are in README.md. */
+  var FIREBASE_CONFIG = {
+    apiKey: "",
+    authDomain: "",
+    projectId: "",
+    appId: ""
+    // storageBucket & messagingSenderId aren't needed for Firestore sync.
+  };
+
+  var BOARDCODE_KEY = "talkboard.boardCode.v1";
 
   var EM = {
     common: ["😊","😢","😠","😴","🤕","😍","😲","🥱","👍","👎","❤️","🙏","👋","🙋","✋","➕","🛑","🏃","🥤","🍽️","⚽","👀","✅","🔁","⬆️","⬇️",
@@ -442,6 +464,26 @@
     };
   }
 
+  // Stable per-device id so a device can recognise (and skip) its own writes.
+  var CLIENT_ID = (function(){
+    try{
+      var v = localStorage.getItem("talkboard.clientId");
+      if(!v){ v = uid() + uid(); localStorage.setItem("talkboard.clientId", v); }
+      return v;
+    }catch(e){ return uid() + uid(); }
+  })();
+
+  var cloud = {
+    ready:false,          // Firebase initialised + signed in
+    code:null,            // board code we're synced to, or null
+    status:"off",         // off | connecting | synced | offline | error
+    db:null,
+    ref:null,
+    unsub:null,
+    applyingRemote:false, // guards against echoing a remote update back up
+    pushTimer:null
+  };
+
   var state = seedState();
   var storageOK = true;
   var editMode = false;
@@ -494,6 +536,131 @@
   function scheduleSave(){
     clearTimeout(saveTimer);
     saveTimer = setTimeout(persist, 250);
+    cloudPush(false);
+  }
+
+  /* ---------------- cloud sync (optional, Firebase Firestore) ----------------
+     The board is mirrored to a single Firestore document keyed by a "board
+     code". Any device that enters the same code shares the board. Local
+     storage stays the offline cache; the cloud doc is the shared source of
+     truth. Conflict handling is last-write-wins on the whole board, which is
+     fine for one caregiver editing at a time. */
+
+  function cloudConfigured(){
+    return !!(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.projectId);
+  }
+  function cloudAvailable(){
+    return cloudConfigured() && typeof window.firebase !== "undefined";
+  }
+  function cloudActive(){
+    return cloud.ready && !!cloud.ref;
+  }
+  function setCloudStatus(s){
+    if(cloud.status === s) return;
+    cloud.status = s;
+    renderSyncStatus();
+  }
+
+  function normalizeCode(code){
+    return String(code||"").trim().toLowerCase().replace(/[^a-z0-9-]/g, "");
+  }
+
+  function generateCode(){
+    var words = ["sunny","otter","maple","river","cocoa","pixel","willow","mango",
+                 "pebble","comet","clover","ginger","juniper","marble","pepper","cedar"];
+    function w(){ return words[Math.floor(Math.random()*words.length)]; }
+    return w() + "-" + w() + "-" + Math.floor(1000 + Math.random()*9000);
+  }
+
+  function initCloud(){
+    if(!cloudAvailable()) return;   // no config, or the SDK didn't load
+    try{
+      if(!window.firebase.apps.length) window.firebase.initializeApp(FIREBASE_CONFIG);
+      cloud.db = window.firebase.firestore();
+      // Offline cache: the board keeps working with no connection and queues
+      // writes until it's back. Ignore failures (e.g. multiple open tabs).
+      cloud.db.enablePersistence({synchronizeTabs:true}).catch(function(){});
+      window.firebase.auth().onAuthStateChanged(function(user){
+        if(!user) return;
+        cloud.ready = true;
+        var saved = null;
+        try{ saved = localStorage.getItem(BOARDCODE_KEY); }catch(e){}
+        if(saved && !cloud.ref) cloudJoin(saved, {silent:true});
+      });
+      window.firebase.auth().signInAnonymously().catch(function(){
+        setCloudStatus("error");
+      });
+    }catch(e){
+      setCloudStatus("error");
+    }
+  }
+
+  function cloudJoin(code, opts){
+    opts = opts || {};
+    code = normalizeCode(code);
+    if(!code) return;
+    try{ localStorage.setItem(BOARDCODE_KEY, code); }catch(e){}
+    cloud.code = code;
+    if(!cloud.ready || !cloud.db){
+      // Sign-in hasn't finished; onAuthStateChanged will pick up the saved code.
+      setCloudStatus("connecting");
+      return;
+    }
+    if(cloud.unsub){ cloud.unsub(); cloud.unsub = null; }
+    cloud.ref = cloud.db.collection("boards").doc(code);
+    setCloudStatus("connecting");
+    cloud.unsub = cloud.ref.onSnapshot({includeMetadataChanges:true}, function(snap){
+      // Our own not-yet-committed write echoes back first — ignore it.
+      if(snap.metadata.hasPendingWrites){ setCloudStatus("connecting"); return; }
+      if(!snap.exists){
+        // First device on this code — seed the cloud from what's on this device.
+        cloudPush(true);
+        setCloudStatus(snap.metadata.fromCache ? "offline" : "synced");
+        return;
+      }
+      var d = snap.data() || {};
+      // Adopt a genuine remote change (not our own committed write).
+      if(isValidState(d.data) && d.updatedBy !== CLIENT_ID){
+        cloud.applyingRemote = true;
+        state = d.data;
+        if(activeTab !== "core" && !state.categories.some(function(c){ return c.id===activeTab; })){
+          activeTab = "core";
+        }
+        pendingDeleteId = null;
+        persist();      // keep the local offline cache in step with the cloud
+        render();
+        cloud.applyingRemote = false;
+      }
+      setCloudStatus(snap.metadata.fromCache ? "offline" : "synced");
+    }, function(){
+      setCloudStatus("error");
+    });
+    if(!opts.silent) toast("Connected to board “" + code + "”");
+  }
+
+  function cloudPush(immediate){
+    if(!cloudActive() || cloud.applyingRemote) return;
+    clearTimeout(cloud.pushTimer);
+    var write = function(){
+      if(!cloudActive()) return;
+      cloud.ref.set({
+        schema: SCHEMA,
+        updatedBy: CLIENT_ID,
+        updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+        data: state
+      }).catch(function(){ setCloudStatus("error"); });
+    };
+    if(immediate) write();
+    else cloud.pushTimer = setTimeout(write, 400);
+  }
+
+  function cloudLeave(){
+    if(cloud.unsub){ cloud.unsub(); cloud.unsub = null; }
+    cloud.ref = null;
+    cloud.code = null;
+    try{ localStorage.removeItem(BOARDCODE_KEY); }catch(e){}
+    setCloudStatus("off");
+    toast("Disconnected — this device is now local only");
   }
 
   /* ---------------- misc helpers ---------------- */
@@ -529,14 +696,23 @@
   /* ---------------- render ---------------- */
 
   function renderSyncStatus(){
-    var installed = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches ||
-                    window.navigator.standalone === true;
-    app.syncDot.className = storageOK ? "" : "off";
-    if(!storageOK){
-      app.syncText.textContent = "Changes won't be saved on this device";
-    } else {
-      app.syncText.textContent = installed ? "Saved on this device" : "Saved on this device";
+    if(cloud.code){
+      var map = {
+        connecting: ["",    "Syncing…"],
+        synced:     ["",    "Synced across devices"],
+        offline:    ["off", "Offline — will sync when online"],
+        error:      ["off", "Sync problem — saved on this device"],
+        off:        ["",    "Saved on this device"]
+      };
+      var m = map[cloud.status] || map.connecting;
+      app.syncDot.className = m[0];
+      app.syncText.textContent = m[1];
+      return;
     }
+    app.syncDot.className = storageOK ? "" : "off";
+    app.syncText.textContent = storageOK
+      ? "Saved on this device"
+      : "Changes won't be saved on this device";
   }
 
   function renderStrip(){
@@ -831,6 +1007,59 @@
     });
   }
 
+  /* ---------------- cloud sync modal ---------------- */
+
+  function openCloudModal(){
+    var html;
+    if(!cloudConfigured()){
+      html =
+        '<h2>Cloud sync</h2>' +
+        '<div class="tip">Cloud sync isn’t set up yet. Add your Firebase settings near the top of <code>index.html</code> (the <code>FIREBASE_CONFIG</code> block) to sync this board across devices — see the README for the 5-minute setup.</div>' +
+        '<div class="sheetActions"><button class="btn btnPrimary" id="clClose">Close</button></div>';
+    } else if(cloudActive()){
+      html =
+        '<h2>Cloud sync</h2>' +
+        '<div class="tip">This board is syncing under the code below. Enter the same code on another device to share it. Anyone who knows the code can view and edit — treat it like a password.</div>' +
+        '<div class="field"><label>Board code</label><input type="text" id="clCode" value="' + escapeHtml(cloud.code) + '" readonly></div>' +
+        '<div class="sheetActions">' +
+          '<button class="btn btnGhost" id="clCopy">Copy code</button>' +
+          '<button class="btn btnPrimary" id="clClose">Done</button>' +
+        '</div>' +
+        '<button class="btn" id="clLeave" style="width:100%;margin-top:10px;background:transparent;color:var(--danger);">Disconnect this device</button>';
+    } else {
+      html =
+        '<h2>Cloud sync</h2>' +
+        '<div class="tip">Enter a board code to sync this board across devices, or generate a new one. Anyone who knows the code can view and edit — treat it like a password.</div>' +
+        '<div class="field"><label>Board code</label><input type="text" id="clCode" placeholder="e.g. sunny-otter-1234" autocapitalize="none" autocomplete="off" spellcheck="false"></div>' +
+        '<button class="btn btnGhost" id="clGen" style="width:100%;">Generate a code</button>' +
+        '<div class="sheetActions" style="margin-top:10px;">' +
+          '<button class="btn btnGhost" id="clClose">Cancel</button>' +
+          '<button class="btn btnPrimary" id="clConnect">Connect</button>' +
+        '</div>';
+    }
+    openModal(html, function(){
+      var byId = function(id){ return document.getElementById(id); };
+      var close = byId('clClose'); if(close) close.addEventListener('click', closeModal);
+      var gen = byId('clGen'); if(gen) gen.addEventListener('click', function(){ byId('clCode').value = generateCode(); });
+      var connect = byId('clConnect');
+      if(connect) connect.addEventListener('click', function(){
+        var code = normalizeCode(byId('clCode').value);
+        if(!code){ toast("Enter or generate a code first"); return; }
+        cloudJoin(code);
+        closeModal();
+      });
+      var copy = byId('clCopy');
+      if(copy) copy.addEventListener('click', function(){
+        var t = cloud.code || "";
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(t).then(function(){ toast("Code copied"); }, function(){ toast("Code: " + t); });
+        } else { toast("Code: " + t); }
+      });
+      var leave = byId('clLeave');
+      if(leave) leave.addEventListener('click', function(){ cloudLeave(); closeModal(); });
+    });
+  }
+
   /* ---------------- backup / restore ---------------- */
 
   function backupBoard(){
@@ -863,6 +1092,7 @@
         activeTab = "core";
         pendingDeleteId = null;
         persist();
+        cloudPush(true);   // if synced, share the restored board with other devices
         render();
         toast("Board restored");
       }catch(e){
@@ -938,6 +1168,7 @@
     speak(sentence.map(function(w){ return w.label; }).join(' '));
   });
 
+  document.getElementById('cloudBtn').addEventListener('click', openCloudModal);
   document.getElementById('backupBtn').addEventListener('click', backupBoard);
   var restoreFile = document.getElementById('restoreFile');
   document.getElementById('restoreBtn').addEventListener('click', function(){ restoreFile.click(); });
@@ -980,6 +1211,12 @@
       navigator.serviceWorker.register('sw.js').catch(function(){});
     });
   }
+
+  // Cloud sync boots after `load`, by which point the deferred Firebase SDK
+  // has run. If it's not configured or didn't load, the app stays local-only.
+  window.addEventListener('load', function(){
+    try{ initCloud(); }catch(e){}
+  });
 
 })();
 </script>

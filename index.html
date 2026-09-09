@@ -163,12 +163,25 @@
   .tile .em{font-size:38px; line-height:1;}
   .tile .word-label{font-size:15px; font-weight:700; text-align:center; line-height:1.15;}
 
-  /* Bigger tiles on tablets (iPad portrait ~768px and up). */
+  /* Bigger UI on tablets (iPad portrait ~768px and up). */
   @media (min-width:700px){
     #gridWrap{padding:20px;}
     #grid{grid-template-columns:repeat(auto-fill, minmax(150px,1fr)); gap:16px;}
     .tile .em{font-size:54px;}
     .tile .word-label{font-size:18px;}
+    /* sentence strip */
+    #sentenceBar{padding:12px 16px; gap:12px;}
+    #strip{min-height:66px; gap:10px;}
+    #strip:empty::after{font-size:17px;}
+    .chip{font-size:21px; padding:8px 15px; gap:8px;}
+    .chip .em{font-size:24px;}
+    .iconbtn{width:60px; height:60px; border-radius:18px;}
+    #speakBtn{font-size:28px;}
+    #clearBtn{font-size:23px;}
+    /* category tabs */
+    #tabs{gap:10px; padding:12px 16px;}
+    .tab{font-size:19px; padding:11px 20px; gap:9px;}
+    .tab .em{font-size:23px;}
   }
   /* Larger still on iPad landscape / iPad Pro. */
   @media (min-width:1000px){
@@ -176,6 +189,14 @@
     .tile{border-radius:24px;}
     .tile .em{font-size:66px;}
     .tile .word-label{font-size:21px;}
+    #strip{min-height:74px;}
+    .chip{font-size:23px; padding:9px 17px;}
+    .chip .em{font-size:27px;}
+    .iconbtn{width:66px; height:66px; border-radius:20px;}
+    #speakBtn{font-size:32px;}
+    #clearBtn{font-size:26px;}
+    .tab{font-size:21px; padding:12px 22px;}
+    .tab .em{font-size:25px;}
   }
 
   .tile-pronoun{background:var(--pronoun-bg); color:var(--pronoun-fg);}

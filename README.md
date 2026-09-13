@@ -13,6 +13,9 @@ it to a phone or tablet home screen and it runs full-screen and works offline.
   add to, rename, recolor, and delete.
 - **Sentence strip** with tap-to-remove words, a clear button, and
   text-to-speech using the device's built-in voices.
+- **Custom voice** — in parent controls, pick from the device's installed
+  voices and tune speed/pitch (saved with the board, so it syncs). On iPad,
+  add clearer voices via *Settings → Accessibility → Spoken Content → Voices*.
 - **Parent controls** behind a *press-and-hold* lock so a child can't
   accidentally rearrange the board. In edit mode you can add / edit / reorder /
   delete words and categories.

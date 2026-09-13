@@ -224,6 +224,13 @@
     background:rgba(255,255,255,.85); color:#222; box-shadow:0 1px 3px rgba(0,0,0,.25);
   }
   .miniBtn.del{background:var(--danger); color:#fff;}
+  .miniBtn.star{color:#b0872a;}
+  .miniBtn.star.on{background:#ffcf4d; color:#7a5a00;}
+  .favEmpty{
+    grid-column:1 / -1; text-align:center; color:var(--ink-dim);
+    background:var(--surface-alt); border:2px dashed var(--border); border-radius:16px;
+    padding:26px 18px; font-size:15px; line-height:1.5; font-weight:600;
+  }
   .moveCol{position:absolute; left:4px; top:4px; bottom:4px; display:flex; flex-direction:column; justify-content:space-between;}
   .confirmRow{position:absolute; inset:0; background:rgba(0,0,0,.55); border-radius:20px; display:flex; align-items:center; justify-content:center; gap:8px;}
   .confirmRow button{border:none; border-radius:10px; padding:6px 10px; font-weight:700; font-size:13px; cursor:pointer;}
@@ -354,6 +361,7 @@
   <div id="footRight">
     <button id="installBtn">⬇️ Install app</button>
     <div class="editTools">
+      <button id="simpleBtn" class="editBtn">👶 Simple: Off</button>
       <button id="voiceBtn" class="editBtn">🔊 Voice</button>
       <button id="cloudBtn" class="editBtn">☁️ Cloud sync</button>
       <button id="backupBtn" class="editBtn">⬆️ Back up</button>
@@ -442,25 +450,25 @@
   function seedState(){
     return {
       core: [
-        {id:uid(),label:"yes",emoji:"👍",type:"negation"},
-        {id:uid(),label:"no",emoji:"👎",type:"negation"},
-        {id:uid(),label:"please",emoji:"🙏",type:"social"},
-        {id:uid(),label:"thank you",emoji:"💕",type:"social"},
+        {id:uid(),label:"yes",emoji:"👍",type:"negation",fav:true},
+        {id:uid(),label:"no",emoji:"👎",type:"negation",fav:true},
+        {id:uid(),label:"please",emoji:"🙏",type:"social",fav:true},
+        {id:uid(),label:"thank you",emoji:"💕",type:"social",fav:true},
         {id:uid(),label:"hi",emoji:"🙋",type:"social"},
         {id:uid(),label:"bye",emoji:"👋",type:"social"},
         {id:uid(),label:"I",emoji:"🧍",type:"pronoun"},
         {id:uid(),label:"you",emoji:"👉",type:"pronoun"},
-        {id:uid(),label:"want",emoji:"✋",type:"verb"},
-        {id:uid(),label:"more",emoji:"➕",type:"verb"},
+        {id:uid(),label:"want",emoji:"✋",type:"verb",fav:true},
+        {id:uid(),label:"more",emoji:"➕",type:"verb",fav:true},
         {id:uid(),label:"stop",emoji:"🛑",type:"verb"},
         {id:uid(),label:"go",emoji:"🏃",type:"verb"},
-        {id:uid(),label:"help",emoji:"🆘",type:"verb"},
+        {id:uid(),label:"help",emoji:"🆘",type:"verb",fav:true},
         {id:uid(),label:"like",emoji:"❤️",type:"verb"},
-        {id:uid(),label:"eat",emoji:"🍽️",type:"verb"},
-        {id:uid(),label:"drink",emoji:"🥤",type:"verb"},
+        {id:uid(),label:"eat",emoji:"🍽️",type:"verb",fav:true},
+        {id:uid(),label:"drink",emoji:"🥤",type:"verb",fav:true},
         {id:uid(),label:"play",emoji:"⚽",type:"verb"},
         {id:uid(),label:"look",emoji:"👀",type:"verb"},
-        {id:uid(),label:"all done",emoji:"✅",type:"verb"},
+        {id:uid(),label:"all done",emoji:"✅",type:"verb",fav:true},
         {id:uid(),label:"again",emoji:"🔁",type:"verb"},
         {id:uid(),label:"up",emoji:"⬆️",type:"verb"},
         {id:uid(),label:"down",emoji:"⬇️",type:"verb"},
@@ -511,7 +519,7 @@
           {id:uid(),label:"horse",emoji:"🐴"},{id:uid(),label:"turtle",emoji:"🐢"}
         ]}
       ],
-      settings: { voiceURI:null, rate:0.92, pitch:1.05 }
+      settings: { voiceURI:null, rate:0.92, pitch:1.05, simple:false }
     };
   }
 
@@ -551,6 +559,7 @@
     syncDot: document.getElementById('syncDot'),
     syncText: document.getElementById('syncText'),
     boardCodeChip: document.getElementById('boardCodeChip'),
+    simpleBtn: document.getElementById('simpleBtn'),
     exitPill: document.getElementById('exitEditPill'),
     gearBtn: document.getElementById('gearBtn'),
     installBtn: document.getElementById('installBtn'),
@@ -563,7 +572,7 @@
 
   /* ---------------- persistence (local, offline-first) ---------------- */
 
-  var DEFAULT_SETTINGS = { voiceURI:null, rate:0.92, pitch:1.05 };
+  var DEFAULT_SETTINGS = { voiceURI:null, rate:0.92, pitch:1.05, simple:false };
 
   function isValidState(s){
     return s && typeof s === "object" && Array.isArray(s.core) && Array.isArray(s.categories);
@@ -576,6 +585,7 @@
     if(typeof s.settings.rate !== "number")  s.settings.rate  = DEFAULT_SETTINGS.rate;
     if(typeof s.settings.pitch !== "number") s.settings.pitch = DEFAULT_SETTINGS.pitch;
     if(!("voiceURI" in s.settings))          s.settings.voiceURI = DEFAULT_SETTINGS.voiceURI;
+    if(typeof s.settings.simple !== "boolean") s.settings.simple = DEFAULT_SETTINGS.simple;
     return s;
   }
 
@@ -687,7 +697,7 @@
       if(isValidState(d.data) && d.updatedBy !== CLIENT_ID){
         cloud.applyingRemote = true;
         state = ensureSettings(d.data);
-        if(activeTab !== "core" && !state.categories.some(function(c){ return c.id===activeTab; })){
+        if(activeTab !== "core" && activeTab !== "fav" && !state.categories.some(function(c){ return c.id===activeTab; })){
           activeTab = "core";
         }
         pendingDeleteId = null;
@@ -833,11 +843,23 @@
 
   function renderTabs(){
     app.tabs.innerHTML = "";
+    var simple = !!(state.settings && state.settings.simple);
+
+    var favTab = document.createElement('button');
+    favTab.className = 'tab' + (activeTab==='fav' ? ' active' : '');
+    favTab.innerHTML = '<span class="em">⭐</span><span>Favorites</span>';
+    favTab.addEventListener('click', function(){ activeTab='fav'; render(); });
+    app.tabs.appendChild(favTab);
+
     var coreTab = document.createElement('button');
     coreTab.className = 'tab' + (activeTab==='core' ? ' active' : '');
     coreTab.innerHTML = '<span class="em">🏠</span><span>Core</span>';
     coreTab.addEventListener('click', function(){ activeTab='core'; render(); });
     app.tabs.appendChild(coreTab);
+
+    // In Simple mode, categories are hidden for the child but still shown while
+    // a grown-up is editing so they stay manageable.
+    if(simple && !editMode) return;
 
     state.categories.forEach(function(cat){
       var t = document.createElement('button');
@@ -866,12 +888,66 @@
     return cat ? cat.words : [];
   }
 
+  // Favorited words from Core + every category, each paired with its tile color.
+  function favoriteWords(){
+    var out = [];
+    state.core.forEach(function(w){
+      if(w.fav) out.push({ word:w, cls:typeClass(w.type||'verb') });
+    });
+    state.categories.forEach(function(cat){
+      cat.words.forEach(function(w){
+        if(w.fav) out.push({ word:w, cls:catClass(cat.color||'cat-orange') });
+      });
+    });
+    return out;
+  }
+
   function currentCategory(){
     if(activeTab==='core') return null;
     return state.categories.find(function(c){ return c.id===activeTab; }) || null;
   }
 
+  function renderFavorites(){
+    app.grid.innerHTML = "";
+    var favs = favoriteWords();
+    if(!favs.length){
+      var note = document.createElement('div');
+      note.className = 'favEmpty';
+      note.textContent = editMode
+        ? "No favorites yet. Tap ☆ on any word in Core or a category to add it here."
+        : "No favorites yet. A grown-up can add some in parent controls.";
+      app.grid.appendChild(note);
+      return;
+    }
+    favs.forEach(function(f){
+      var word = f.word;
+      var tile = document.createElement('button');
+      tile.className = 'tile ' + f.cls;
+      tile.innerHTML = '<span class="em">'+word.emoji+'</span><span class="word-label">'+escapeHtml(word.label)+'</span>';
+      tile.addEventListener('click', function(){
+        if(editMode) return;
+        sentence.push({label:word.label, emoji:word.emoji});
+        renderStrip();
+        speak(word.label);
+      });
+      if(editMode){
+        var row = document.createElement('div');
+        row.className = 'tileEditRow';
+        var star = document.createElement('button');
+        star.className = 'miniBtn star on'; star.textContent = '★';
+        star.title = 'Remove from favorites';
+        star.addEventListener('click', function(ev){
+          ev.stopPropagation(); word.fav = false; renderGrid(); scheduleSave();
+        });
+        row.appendChild(star);
+        tile.appendChild(row);
+      }
+      app.grid.appendChild(tile);
+    });
+  }
+
   function renderGrid(){
+    if(activeTab === 'fav'){ renderFavorites(); return; }
     app.grid.innerHTML = "";
     var list = currentWordList();
     var cat = currentCategory();
@@ -903,6 +979,14 @@
 
         var row = document.createElement('div');
         row.className = 'tileEditRow';
+        var star = document.createElement('button');
+        star.className = 'miniBtn star' + (word.fav ? ' on' : '');
+        star.textContent = word.fav ? '★' : '☆';
+        star.title = word.fav ? 'Remove from favorites' : 'Add to favorites';
+        star.addEventListener('click', function(ev){
+          ev.stopPropagation(); word.fav = !word.fav; renderGrid(); scheduleSave();
+        });
+        row.appendChild(star);
         var editBtn = document.createElement('button');
         editBtn.className='miniBtn'; editBtn.textContent='✏️';
         editBtn.addEventListener('click', function(ev){ ev.stopPropagation(); openWordModal(word.id); });
@@ -936,6 +1020,13 @@
 
   function render(){
     document.body.classList.toggle('editing', editMode);
+    var simple = !!(state.settings && state.settings.simple);
+    // In Simple mode the child only sees Favorites + Core, so never leave them
+    // parked on a now-hidden category.
+    if(simple && !editMode && activeTab !== 'fav' && activeTab !== 'core'){
+      activeTab = favoriteWords().length ? 'fav' : 'core';
+    }
+    if(app.simpleBtn) app.simpleBtn.textContent = simple ? '👶 Simple: On' : '👶 Simple: Off';
     renderSyncStatus();
     renderStrip();
     renderTabs();
@@ -1333,6 +1424,16 @@
     speak(sentence.map(function(w){ return w.label; }).join(' '));
   });
 
+  app.simpleBtn.addEventListener('click', function(){
+    state.settings = state.settings || {};
+    state.settings.simple = !state.settings.simple;
+    if(state.settings.simple){
+      activeTab = favoriteWords().length ? 'fav' : 'core';
+    }
+    scheduleSave();
+    render();
+    toast(state.settings.simple ? "Simple mode on — categories hidden for your child" : "Simple mode off");
+  });
   document.getElementById('voiceBtn').addEventListener('click', openVoiceModal);
   document.getElementById('cloudBtn').addEventListener('click', openCloudModal);
   app.boardCodeChip.addEventListener('click', function(){
@@ -1375,6 +1476,9 @@
   var loaded = loadState();
   if(loaded){ state = loaded; }
   else { persist(); } // seed on first run
+
+  // Land on the curated Favorites view when there are any.
+  if(favoriteWords().length) activeTab = 'fav';
 
   render();
 

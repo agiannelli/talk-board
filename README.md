@@ -9,6 +9,9 @@ it to a phone or tablet home screen and it runs full-screen and works offline.
 
 - **Core word board** organized by word type (pronouns, actions, describing
   words, social words, questions, yes/no) using a consistent color scheme.
+- **Favorites** — star any word (in edit mode) to collect it on a ⭐ Favorites
+  tab, which becomes the default landing view. Pair with **Simple mode** to hide
+  the extra categories so a child sees a short, curated board (Favorites + Core).
 - **Category tabs** (Food, Toys & Play, People, Places, Animals) that you can
   add to, rename, recolor, and delete.
 - **Sentence strip** with tap-to-remove words, a clear button, and

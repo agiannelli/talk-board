@@ -312,6 +312,10 @@
   .btnPrimary{background:var(--accent); color:var(--accent-ink);}
   .btnGhost{background:var(--surface-alt); color:var(--ink);}
   .tip{font-size:13px; color:var(--ink-dim); background:var(--surface-alt); border-radius:12px; padding:10px 12px; margin-bottom:14px; line-height:1.4;}
+  .sheetSep{border:none; border-top:1px solid var(--border); margin:16px 0;}
+  .acctRow{display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:14px;}
+  .acctBtn{flex:0 0 auto; padding:8px 12px; font-size:14px;}
+  .myBoardsHint{font-size:12px; color:var(--ink-dim); margin:12px 0 6px; font-weight:700; text-transform:uppercase; letter-spacing:.03em;}
   .rowBtn{
     display:flex; align-items:center; gap:12px; width:100%; text-align:left;
     background:var(--bg); border:1.5px solid var(--border); border-radius:14px;
@@ -540,7 +544,10 @@
     ref:null,
     unsub:null,
     applyingRemote:false, // guards against echoing a remote update back up
-    pushTimer:null
+    pushTimer:null,
+    user:null,            // current Firebase user (anonymous or Google)
+    ownerUid:null,        // uid that owns the current board, or null (shareable)
+    members:[]            // extra uids granted access to an owned board
   };
 
   var state = seedState();
@@ -654,19 +661,106 @@
       // Offline cache: the board keeps working with no connection and queues
       // writes until it's back. Ignore failures (e.g. multiple open tabs).
       cloud.db.enablePersistence({synchronizeTabs:true}).catch(function(){});
+
+      // Complete any Google redirect sign-in that bounced back to the app.
+      window.firebase.auth().getRedirectResult().catch(function(){});
+
       window.firebase.auth().onAuthStateChanged(function(user){
-        if(!user) return;
+        if(!user){
+          // Signed out (or first run): fall back to an anonymous session so
+          // local + board-code use keeps working with no login required.
+          cloud.user = null; cloud.ready = false;
+          window.firebase.auth().signInAnonymously().catch(function(){ setCloudStatus("error"); });
+          return;
+        }
+        cloud.user = user;
         cloud.ready = true;
         var saved = null;
         try{ saved = localStorage.getItem(BOARDCODE_KEY); }catch(e){}
-        if(saved && !cloud.ref) cloudJoin(saved, {silent:true});
-      });
-      window.firebase.auth().signInAnonymously().catch(function(){
-        setCloudStatus("error");
+        if(saved){
+          // (Re)connect: re-subscribe under the (possibly new) identity so
+          // owner-only boards resolve access correctly after sign-in/out.
+          cloudJoin(saved, {silent:true, force:true});
+        }
+        renderAccountUI();
       });
     }catch(e){
       setCloudStatus("error");
     }
+  }
+
+  /* ---------------- account (optional Google sign-in) ---------------- */
+
+  function isSignedIn(){ return !!(cloud.user && !cloud.user.isAnonymous); }
+  function userLabel(){
+    if(!cloud.user) return "";
+    return cloud.user.displayName || cloud.user.email || "your account";
+  }
+
+  function signInGoogle(){
+    if(!cloudAvailable()){ toast("Cloud isn’t set up"); return; }
+    var provider = new window.firebase.auth.GoogleAuthProvider();
+    window.firebase.auth().signInWithPopup(provider).then(function(res){
+      toast("Signed in as " + (res.user.displayName || res.user.email || "you"));
+    }).catch(function(err){
+      var code = err && err.code || "";
+      // Installed PWAs often can't open popups — fall back to a full redirect.
+      if(code.indexOf("popup") !== -1 || code.indexOf("operation-not-supported") !== -1 || code.indexOf("cancelled") !== -1){
+        try{
+          window.firebase.auth().signInWithRedirect(new window.firebase.auth.GoogleAuthProvider());
+          return;
+        }catch(e){}
+      }
+      toast("Sign-in didn’t finish");
+    });
+  }
+
+  function signOutAccount(){
+    if(!cloudAvailable()) return;
+    window.firebase.auth().signOut().then(function(){
+      toast("Signed out");
+      renderAccountUI();
+    }).catch(function(){});
+  }
+
+  // Remember, per signed-in user, which boards they've connected to, so they
+  // can recover them on any device without needing the code.
+  function recordBoardForUser(code){
+    if(!isSignedIn() || !cloud.db || !code) return;
+    try{
+      cloud.db.collection("users").doc(cloud.user.uid).collection("boards").doc(code).set({
+        code: code,
+        updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
+      }, {merge:true}).catch(function(){});
+    }catch(e){}
+  }
+
+  function listMyBoards(){
+    if(!isSignedIn() || !cloud.db) return Promise.resolve([]);
+    return cloud.db.collection("users").doc(cloud.user.uid).collection("boards")
+      .orderBy("updatedAt","desc").get()
+      .then(function(snap){
+        var out = [];
+        snap.forEach(function(doc){ out.push(doc.id); });
+        return out;
+      }).catch(function(){ return []; });
+  }
+
+  // Claim the current board so only this account (and invited members) can
+  // open it — the security upgrade that matters once photos are added.
+  function claimBoard(){
+    if(!isSignedIn() || !cloudActive()) return;
+    cloud.ownerUid = cloud.user.uid;
+    cloudPush(true);
+    recordBoardForUser(cloud.code);
+    toast("This board is now private to your account");
+  }
+  function unclaimBoard(){
+    if(!cloudActive()) return;
+    cloud.ownerUid = null;
+    cloud.members = [];
+    cloudPush(true);
+    toast("This board is shareable by code again");
   }
 
   function cloudJoin(code, opts){
@@ -688,11 +782,16 @@
       if(snap.metadata.hasPendingWrites){ setCloudStatus("connecting"); return; }
       if(!snap.exists){
         // First device on this code — seed the cloud from what's on this device.
+        cloud.ownerUid = null; cloud.members = [];
         cloudPush(true);
+        recordBoardForUser(code);
         setCloudStatus(snap.metadata.fromCache ? "offline" : "synced");
         return;
       }
       var d = snap.data() || {};
+      cloud.ownerUid = d.ownerUid || null;
+      cloud.members = d.members || [];
+      recordBoardForUser(code);
       // Adopt a genuine remote change (not our own committed write).
       if(isValidState(d.data) && d.updatedBy !== CLIENT_ID){
         cloud.applyingRemote = true;
@@ -707,6 +806,8 @@
       }
       setCloudStatus(snap.metadata.fromCache ? "offline" : "synced");
     }, function(){
+      // Most commonly a permission error on an owner-only board when not
+      // signed in as the owner.
       setCloudStatus("error");
     });
     if(!opts.silent) toast("Connected to board “" + code + "”");
@@ -721,6 +822,8 @@
         schema: SCHEMA,
         updatedBy: CLIENT_ID,
         updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+        ownerUid: cloud.ownerUid || null,   // preserved across writes
+        members: cloud.members || [],
         data: state
       }).catch(function(){ setCloudStatus("error"); });
     };
@@ -732,6 +835,8 @@
     if(cloud.unsub){ cloud.unsub(); cloud.unsub = null; }
     cloud.ref = null;
     cloud.code = null;
+    cloud.ownerUid = null;
+    cloud.members = [];
     try{ localStorage.removeItem(BOARDCODE_KEY); }catch(e){}
     setCloudStatus("off");
     toast("Disconnected — this device is now local only");
@@ -1258,27 +1363,65 @@
 
   /* ---------------- cloud sync modal ---------------- */
 
+  // Re-render the cloud sheet in place when auth state changes while it's open.
+  function renderAccountUI(){
+    if(app.modalRoot.classList.contains('show') && document.getElementById('cloudSheet')){
+      openCloudModal();
+    }
+  }
+
   function openCloudModal(){
-    var html;
     if(!cloudConfigured()){
-      html =
-        '<h2>Cloud sync</h2>' +
+      openModal(
+        '<div id="cloudSheet"><h2>Cloud sync</h2>' +
         '<div class="tip">Cloud sync isn’t set up yet. Add your Firebase settings near the top of <code>index.html</code> (the <code>FIREBASE_CONFIG</code> block) to sync this board across devices — see the README for the 5-minute setup.</div>' +
-        '<div class="sheetActions"><button class="btn btnPrimary" id="clClose">Close</button></div>';
-    } else if(cloudActive()){
-      html =
-        '<h2>Cloud sync</h2>' +
-        '<div class="tip">This board is syncing under the code below. Enter the same code on another device to share it. The code is locked while connected — to switch boards, create a new code. Anyone who knows the code can view and edit, so treat it like a password.</div>' +
+        '<div class="sheetActions"><button class="btn btnPrimary" id="clClose">Close</button></div></div>',
+        function(){ var c=document.getElementById('clClose'); if(c) c.addEventListener('click', closeModal); }
+      );
+      return;
+    }
+
+    // --- Account section ---
+    var acct;
+    if(isSignedIn()){
+      acct =
+        '<div class="acctRow"><span>✅ Signed in as <b>'+escapeHtml(userLabel())+'</b></span>' +
+        '<button class="btn btnGhost acctBtn" id="clSignOut">Sign out</button></div>' +
+        '<div id="myBoards"><div class="myBoardsHint">Loading your boards…</div></div>';
+    } else {
+      acct =
+        '<div class="tip" style="margin-bottom:10px;">Optional: sign in with Google to keep your boards tied to your account — get them back on any device, and lock a board to just your family (matters once photos are added). You only sign in once on this device.</div>' +
+        '<button class="btn btnPrimary" id="clSignIn" style="width:100%;">Sign in with Google</button>';
+    }
+
+    // --- Board body ---
+    var body;
+    if(cloudActive()){
+      var owned = !!cloud.ownerUid;
+      var ownedByMe = owned && isSignedIn() && cloud.ownerUid === cloud.user.uid;
+      var privacy;
+      if(ownedByMe){
+        privacy = '<div class="tip" style="margin-bottom:8px;">🔒 Private to your account — only you (signed in with Google) can open this board.</div>' +
+          '<button class="btn btnGhost" id="clUnclaim" style="width:100%;">Make shareable by code again</button>';
+      } else if(owned){
+        privacy = '<div class="tip" style="margin-bottom:0;">🔒 This board is private to another account.</div>';
+      } else if(isSignedIn()){
+        privacy = '<button class="btn btnGhost" id="clClaim" style="width:100%;">🔒 Make this board private to my account</button>';
+      } else {
+        privacy = '<div class="tip" style="margin-bottom:0;">Sign in above to lock this board to your account.</div>';
+      }
+      body =
+        '<div class="tip">This board is syncing under the code below. Enter the same code on another device to share it. The code is locked while connected — to switch boards, create a new code.</div>' +
         '<div class="field"><label>Board code (locked)</label><input type="text" id="clCode" value="' + escapeHtml(cloud.code) + '" readonly></div>' +
         '<div class="sheetActions">' +
           '<button class="btn btnGhost" id="clCopy">Copy code</button>' +
           '<button class="btn btnPrimary" id="clClose">Done</button>' +
         '</div>' +
+        '<div style="margin-top:14px;">' + privacy + '</div>' +
         '<button class="btn btnGhost" id="clNew" style="width:100%;margin-top:12px;">Create a new board code</button>' +
         '<button class="btn" id="clLeave" style="width:100%;margin-top:8px;background:transparent;color:var(--danger);">Turn off sync (this device only)</button>';
     } else {
-      html =
-        '<h2>Cloud sync</h2>' +
+      body =
         '<div class="tip">Enter a board code to sync this board across devices, or generate a new one. Anyone who knows the code can view and edit — treat it like a password.</div>' +
         '<div class="field"><label>Board code</label><input type="text" id="clCode" placeholder="e.g. sunny-otter-1234" autocapitalize="none" autocomplete="off" spellcheck="false"></div>' +
         '<button class="btn btnGhost" id="clGen" style="width:100%;">Generate a code</button>' +
@@ -1287,8 +1430,28 @@
           '<button class="btn btnPrimary" id="clConnect">Connect</button>' +
         '</div>';
     }
-    openModal(html, function(){
+
+    openModal('<div id="cloudSheet"><h2>Cloud sync</h2>' + acct + '<hr class="sheetSep">' + body + '</div>', function(){
       var byId = function(id){ return document.getElementById(id); };
+
+      var si = byId('clSignIn'); if(si) si.addEventListener('click', signInGoogle);
+      var so = byId('clSignOut'); if(so) so.addEventListener('click', signOutAccount);
+
+      if(isSignedIn()){
+        listMyBoards().then(function(codes){
+          var host = byId('myBoards'); if(!host) return;
+          codes = codes.filter(function(c){ return c !== cloud.code; });
+          if(!codes.length){ host.innerHTML = '<div class="myBoardsHint">No other saved boards yet.</div>'; return; }
+          host.innerHTML = '<div class="myBoardsHint">Your boards — tap to open</div>';
+          codes.forEach(function(code){
+            var b = document.createElement('button');
+            b.className = 'rowBtn'; b.textContent = code;
+            b.addEventListener('click', function(){ cloudJoin(code); closeModal(); });
+            host.appendChild(b);
+          });
+        });
+      }
+
       var close = byId('clClose'); if(close) close.addEventListener('click', closeModal);
       var gen = byId('clGen'); if(gen) gen.addEventListener('click', function(){ byId('clCode').value = generateCode(); });
       var connect = byId('clConnect');
@@ -1313,6 +1476,12 @@
       });
       var leave = byId('clLeave');
       if(leave) leave.addEventListener('click', function(){ cloudLeave(); closeModal(); });
+      var claim = byId('clClaim');
+      if(claim) claim.addEventListener('click', function(){ claimBoard(); openCloudModal(); });
+      var unclaim = byId('clUnclaim');
+      if(unclaim) unclaim.addEventListener('click', function(){
+        if(window.confirm("Make this board shareable by code again? Anyone who has the code will be able to open it.")){ unclaimBoard(); openCloudModal(); }
+      });
     });
   }
 

@@ -30,6 +30,9 @@ it to a phone or tablet home screen and it runs full-screen and works offline.
 - **Optional cloud sync** — connect two or more devices to the same **board
   code** and edits sync between them automatically (via Firebase Firestore).
   Off by default; the app works exactly the same without it.
+- **Optional Google sign-in** — recover your boards on any device and lock a
+  board to your account (owner-only access). Layered on top of board codes;
+  entirely optional.
 
 ## Using it
 
@@ -70,9 +73,13 @@ minutes and costs nothing for this kind of use.
 4. **Enable Anonymous sign-in**: Build → *Authentication* → *Sign-in method* →
    enable **Anonymous**. (Sync uses this so the database isn't open to the whole
    internet — no login screen appears in the app.)
-5. **Authorize your site**: Authentication → *Settings* → *Authorized domains* →
+5. **Enable Google sign-in** *(optional, for accounts)*: same *Sign-in method*
+   page → enable **Google**. This powers optional sign-in for board recovery and
+   locking a board to your account (see *Accounts* below). Skip it if you only
+   want board codes.
+6. **Authorize your site**: Authentication → *Settings* → *Authorized domains* →
    add `agiannelli.github.io` (and `localhost` for local testing).
-6. **Paste your config** into `index.html`, in the `FIREBASE_CONFIG` block near
+7. **Paste your config** into `index.html`, in the `FIREBASE_CONFIG` block near
    the top of the `<script>`:
 
    ```js
@@ -84,15 +91,49 @@ minutes and costs nothing for this kind of use.
    };
    ```
 
-7. **Set security rules** (Firestore → *Rules*) so only signed-in users can read
-   or write board documents:
+8. **Set security rules** (Firestore → *Rules*). These let anyone signed in with
+   a board's code use it, **unless** an owner has claimed it — then only that
+   account (and anyone they add to `members`) can open it. Each user's private
+   list of boards lives under `users/{uid}`:
 
    ```
    rules_version = '2';
    service cloud.firestore {
      match /databases/{database}/documents {
+
+       // Each user's private index of the boards they've opened.
+       match /users/{uid}/{doc=**} {
+         allow read, write: if request.auth != null && request.auth.uid == uid;
+       }
+
        match /boards/{code} {
-         allow read, write: if request.auth != null;
+         function ownerOf(d)   { return d.get('ownerUid', null); }
+         function membersOf(d) { return d.get('members', []); }
+         function isOwned(d)   { return ownerOf(d) != null; }
+         function canAccess(d) {
+           return request.auth != null && (
+             !isOwned(d) ||
+             ownerOf(d) == request.auth.uid ||
+             request.auth.uid in membersOf(d)
+           );
+         }
+
+         allow read:   if canAccess(resource.data);
+         allow delete: if canAccess(resource.data);
+
+         // A new board may be created unowned or owned by its creator.
+         allow create: if request.auth != null && (
+           request.resource.data.get('ownerUid', null) == null ||
+           request.resource.data.get('ownerUid', null) == request.auth.uid
+         );
+
+         // Existing board: writer must have access, and ownership can only be
+         // left unchanged or claimed by you on a currently-unowned board
+         // (no taking over someone else's board).
+         allow update: if canAccess(resource.data) && (
+           request.resource.data.get('ownerUid', null) == ownerOf(resource.data) ||
+           (!isOwned(resource.data) && request.resource.data.get('ownerUid', null) == request.auth.uid)
+         );
        }
      }
    }
@@ -102,10 +143,27 @@ Then redeploy (commit + push) and, in the app, unlock parent controls →
 **☁️ Cloud sync** → **Generate a code** (or type one) → **Connect**. Enter the
 same code on any other device to share the board.
 
-> **The board code is like a password.** Anyone who knows it can view and edit
-> the board, so use the generated random codes and don't post them publicly.
-> The `apiKey` in the config is *not* a secret — it only identifies your
-> project; the security rules above are what actually protect the data.
+### Accounts (optional)
+
+In **☁️ Cloud sync**, tap **Sign in with Google** (one time per device). Once
+signed in you can:
+
+- **Recover boards** — your connected boards are remembered under your account
+  and listed as *Your boards* on any device you sign into, so you never lose one
+  to a forgotten code.
+- **Lock a board to your account** — tap *Make this board private to my account*.
+  After that the code alone no longer grants access; only your Google account
+  (and anyone added to the board's `members`) can open it. Reverse it with *Make
+  shareable by code again*. This is the recommended setting once you add photos.
+
+Sign-in persists, so the child never sees a login screen; a caregiver signs in
+once in parent controls.
+
+> **The board code is like a password.** For a *shareable* (unclaimed) board,
+> anyone who knows the code can view and edit it — use the generated random codes
+> and don't post them publicly. Claiming a board to your account removes that
+> exposure. The `apiKey` in the config is *not* a secret — it only identifies
+> your project; the security rules above are what actually protect the data.
 
 ## Hosting
 
